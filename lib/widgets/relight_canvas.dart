@@ -32,13 +32,13 @@ class _RelightCanvasState extends State<RelightCanvas> {
     double drawW, drawH, offsetX, offsetY;
 
     if (canvasAspect > imageAspect) {
-      // Canvas is wider than image → pillarbox (bars on left/right)
+      // Canvas is wider than image — pillarbox (bars on left/right)
       drawH = canvasSize.height;
       drawW = drawH * imageAspect;
       offsetX = (canvasSize.width - drawW) / 2.0;
       offsetY = 0.0;
     } else {
-      // Canvas is taller than image → letterbox (bars on top/bottom)
+      // Canvas is taller than image — letterbox (bars on top/bottom)
       drawW = canvasSize.width;
       drawH = drawW / imageAspect;
       offsetX = 0.0;
@@ -46,14 +46,6 @@ class _RelightCanvasState extends State<RelightCanvas> {
     }
 
     return Rect.fromLTWH(offsetX, offsetY, drawW, drawH);
-  }
-
-  /// Convert screen-space position to image-space position (within the draw rect)
-  Offset _screenToImageSpace(Offset screenPos, Rect drawRect) {
-    return Offset(
-      screenPos.dx - drawRect.left,
-      screenPos.dy - drawRect.top,
-    );
   }
 
   @override
@@ -68,20 +60,17 @@ class _RelightCanvasState extends State<RelightCanvas> {
         return GestureDetector(
           onPanUpdate: (details) {
             if (lightingState.isLightingEnabled && lightingState.selectedLightIndex >= 0) {
-              // Light positions are stored in draw-rect-relative coordinates
-              final imagePos = _screenToImageSpace(details.localPosition, drawRect);
-              // Clamp to the draw rect bounds
-              final clampedX = imagePos.dx.clamp(0.0, drawRect.width);
-              final clampedY = imagePos.dy.clamp(0.0, drawRect.height);
-              lightingState.updateSelectedLightPos(clampedX, clampedY);
+              // Convert screen tap to draw-rect-relative coordinates
+              final double relX = (details.localPosition.dx - drawRect.left).clamp(0.0, drawRect.width);
+              final double relY = (details.localPosition.dy - drawRect.top).clamp(0.0, drawRect.height);
+              lightingState.updateSelectedLightPos(relX, relY);
             }
           },
           onTapDown: (details) {
             if (lightingState.isLightingEnabled && lightingState.selectedLightIndex >= 0) {
-              final imagePos = _screenToImageSpace(details.localPosition, drawRect);
-              final clampedX = imagePos.dx.clamp(0.0, drawRect.width);
-              final clampedY = imagePos.dy.clamp(0.0, drawRect.height);
-              lightingState.updateSelectedLightPos(clampedX, clampedY);
+              final double relX = (details.localPosition.dx - drawRect.left).clamp(0.0, drawRect.width);
+              final double relY = (details.localPosition.dy - drawRect.top).clamp(0.0, drawRect.height);
+              lightingState.updateSelectedLightPos(relX, relY);
             }
           },
           child: CustomPaint(
@@ -125,81 +114,69 @@ class PBRShaderPainter extends CustomPainter {
     shader.setImageSampler(1, original);
     shader.setImageSampler(2, depth);
 
-    // Float index tracker
+    final int effectiveMode = state.effectiveViewMode;
+    final double imgW = original.width.toDouble();
+    final double imgH = original.height.toDouble();
+
     int fi = 0;
 
-    // u_ViewMode
-    shader.setFloat(fi++, state.viewMode.toDouble()); // 0
+    // View Mode (0)
+    shader.setFloat(fi++, effectiveMode.toDouble()); 
 
-    // u_Resolution
-    shader.setFloat(fi++, size.width);  // 1
-    shader.setFloat(fi++, size.height); // 2
+    // Canvas Resolution (1, 2)
+    shader.setFloat(fi++, size.width);    
+    shader.setFloat(fi++, size.height);   
 
-    // u_DrawOffset
-    shader.setFloat(fi++, drawRect.left); // 3
-    shader.setFloat(fi++, drawRect.top);  // 4
+    // Calculated BoxFit.contain offset (3, 4)
+    shader.setFloat(fi++, drawRect.left);   
+    shader.setFloat(fi++, drawRect.top);    
 
-    // u_DrawSize
-    shader.setFloat(fi++, drawRect.width);  // 5
-    shader.setFloat(fi++, drawRect.height); // 6
+    // Calculated BoxFit.contain size (5, 6)
+    shader.setFloat(fi++, drawRect.width);  
+    shader.setFloat(fi++, drawRect.height); 
 
-    // u_ImageSize
-    shader.setFloat(fi++, original.width.toDouble());  // 7
-    shader.setFloat(fi++, original.height.toDouble()); // 8
+    // Raw Image Size (7, 8)
+    shader.setFloat(fi++, imgW);  
+    shader.setFloat(fi++, imgH);  
 
-    // u_Roughness
-    shader.setFloat(fi++, state.roughness); // 9
+    // Global Params (9, 10, 11, 12, 13, 14)
+    shader.setFloat(fi++, state.roughness); 
+    shader.setFloat(fi++, state.metallic);  
+    shader.setFloat(fi++, state.ambientColor.r); 
+    shader.setFloat(fi++, state.ambientColor.g); 
+    shader.setFloat(fi++, state.ambientColor.b); 
+    shader.setFloat(fi++, state.shadowSoftness); 
 
-    // u_Metallic
-    shader.setFloat(fi++, state.metallic); // 10
-
-    // u_AmbientLight (vec3)
-    shader.setFloat(fi++, state.ambientColor.r); // 11
-    shader.setFloat(fi++, state.ambientColor.g); // 12
-    shader.setFloat(fi++, state.ambientColor.b); // 13
-
-    // u_ShadowSoftness
-    shader.setFloat(fi++, state.shadowSoftness); // 14
-
-    // u_ActiveLights
+    // Lights (15+)
     int numLights = state.lights.length.clamp(0, 4);
-    shader.setFloat(fi++, numLights.toDouble()); // 15
+    shader.setFloat(fi++, numLights.toDouble()); 
 
-    // Light data: 4 lights × 7 floats each (pos.xyz, color.rgb, intensity)
     for (int i = 0; i < 4; i++) {
       if (i < numLights) {
         final light = state.lights[i];
-        // Light positions are in draw-rect-relative coords.
-        // Convert to screen-space for the shader (add drawRect offset).
-        shader.setFloat(fi++, light.pos.x + drawRect.left);
-        shader.setFloat(fi++, light.pos.y + drawRect.top);
+        
+        // Feed raw relative coords (matches localCoord in shader)
+        shader.setFloat(fi++, light.pos.x);
+        shader.setFloat(fi++, light.pos.y);
         shader.setFloat(fi++, light.pos.z);
         shader.setFloat(fi++, light.color.r);
         shader.setFloat(fi++, light.color.g);
         shader.setFloat(fi++, light.color.b);
         shader.setFloat(fi++, light.intensity);
       } else {
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
-        shader.setFloat(fi++, 0.0);
+        for(int p = 0; p < 7; p++) shader.setFloat(fi++, 0.0);
       }
     }
 
-    // Draw the shader across the entire canvas (shader handles clipping to draw rect)
     final Paint shaderPaint = Paint()..shader = shader;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), shaderPaint);
+    canvas.drawRect(drawRect, shaderPaint);
 
-    // Draw light source indicators on top of the shader output
-    if (state.isLightingEnabled && state.lights.isNotEmpty) {
-      _drawLightIndicators(canvas, size);
+    if (effectiveMode == 0 && state.lights.isNotEmpty) {
+      _drawLightIndicators(canvas);
     }
   }
 
-  void _drawLightIndicators(Canvas canvas, Size size) {
+  void _drawLightIndicators(Canvas canvas) {
     const double maxZ = 800.0;
     const double minDotRadius = 4.0;
     const double maxDotRadius = 14.0;
@@ -212,17 +189,16 @@ class PBRShaderPainter extends CustomPainter {
       final light = state.lights[i];
       final bool isSelected = (i == state.selectedLightIndex);
 
-      // Light positions are in draw-rect-relative coords.
-      // Convert to screen coords for drawing.
+      // Convert draw-rect-relative coords to screen coords for drawing
       final double screenX = light.pos.x + drawRect.left;
       final double screenY = light.pos.y + drawRect.top;
       final Offset center = Offset(screenX, screenY);
 
-      // --- Center dot: radius inversely proportional to depth ---
+      // Center dot: radius inversely proportional to depth
       final double depthNorm = (light.pos.z / maxZ).clamp(0.0, 1.0);
       final double dotRadius = maxDotRadius * (1.0 - depthNorm) + minDotRadius;
 
-      // --- Outer circle: radius proportional to intensity ---
+      // Outer circle: radius proportional to intensity
       final double intensityNorm = ((light.intensity - minIntensity) / (maxIntensity - minIntensity)).clamp(0.0, 1.0);
       final double circleRadius = minCircleRadius + (maxCircleRadius - minCircleRadius) * intensityNorm;
 
@@ -249,7 +225,7 @@ class PBRShaderPainter extends CustomPainter {
         ..style = PaintingStyle.fill;
       canvas.drawCircle(center, dotRadius, dotPaint);
 
-      // Draw a thin border around the dot for contrast
+      // Draw border around the dot for contrast
       final Paint dotBorderPaint = Paint()
         ..color = isSelected ? Colors.white : Colors.white54
         ..style = PaintingStyle.stroke

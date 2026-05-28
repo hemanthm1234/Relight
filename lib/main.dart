@@ -155,45 +155,40 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
             )
         ],
       ),
-      body: Stack(
-        children: [
-          if (_albedoTex != null && _originalTex != null && _depthTex != null && _shader != null) ...[
-            Positioned.fill(
-              child: RelightCanvas(
-                albedoTexture: _albedoTex!,
-                originalTexture: _originalTex!,
-                depthTexture: _depthTex!,
-                compiledShader: _shader!,
-              ),
-            ),
-            const Positioned(
-              left: 0, right: 0, bottom: 0,
-              child: ControlPanel(),
-            ),
-          ] else ...[
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_isLoading) const CircularProgressIndicator() else const Icon(Icons.blur_on, size: 64, color: Colors.blueAccent),
-                    const SizedBox(height: 16),
-                    Text(_statusMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 24),
-                    if (!_isLoading && _albedoTex == null)
-                      ElevatedButton.icon(
-                        onPressed: _processAssetPipeline,
-                        icon: const Icon(Icons.bolt),
-                        label: const Text("Initialize Sample Image"),
-                      )
-                  ],
+      body: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
+        ? Column(
+            children: [
+              Expanded(
+                child: RelightCanvas(
+                  albedoTexture: _albedoTex!,
+                  originalTexture: _originalTex!,
+                  depthTexture: _depthTex!,
+                  compiledShader: _shader!,
                 ),
               ),
-            )
-          ]
-        ],
-      ),
+              const ControlPanel(),
+            ],
+          )
+        : Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_isLoading) const CircularProgressIndicator() else const Icon(Icons.blur_on, size: 64, color: Colors.blueAccent),
+                  const SizedBox(height: 16),
+                  Text(_statusMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 24),
+                  if (!_isLoading && _albedoTex == null)
+                    ElevatedButton.icon(
+                      onPressed: _processAssetPipeline,
+                      icon: const Icon(Icons.bolt),
+                      label: const Text("Initialize Sample Image"),
+                    )
+                ],
+              ),
+            ),
+          ),
     );
   }
 }

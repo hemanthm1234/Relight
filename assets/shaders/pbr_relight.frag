@@ -32,9 +32,14 @@ float getLuminance(vec3 color) {
     return dot(color, vec3(0.299, 0.587, 0.114));
 }
 
+// Get the local pixel coordinate relative to the fitted image
+vec2 getLocalCoord() {
+    return FlutterFragCoord().xy - u_DrawOffset;
+}
+
 // Compute UV from fragment position, mapping from the draw rect to [0,1]
 vec2 computeUV() {
-    return (gl_FragCoord.xy - u_DrawOffset) / u_DrawSize;
+    return getLocalCoord() / u_DrawSize;
 }
 
 // Check if fragment is inside the image draw rect
@@ -164,9 +169,12 @@ void main() {
         return;
     }
 
-    vec3 surfacePos = vec3(gl_FragCoord.xy, depth * 400.0);
-    // Camera position at center of the draw rect, looking from above
-    vec3 camPos = vec3(u_DrawOffset.x + u_DrawSize.x / 2.0, u_DrawOffset.y + u_DrawSize.y / 2.0, 800.0);
+    // Use localized coordinates so it perfectly matches the light positions mapped in Dart
+    vec2 localXY = getLocalCoord();
+    vec3 surfacePos = vec3(localXY, depth * 400.0);
+
+    // Camera now centers directly over the localized image space
+    vec3 camPos = vec3(u_DrawSize.x / 2.0, u_DrawSize.y / 2.0, 800.0);
     vec3 v = normalize(camPos - surfacePos);
 
     vec3 accumulatedLighting = u_AmbientLight * albedo;

@@ -15,8 +15,11 @@ class LightSource {
 
 class LightingState extends ChangeNotifier {
   // View Modes: 0=Lit, 1=Original, 2=Albedo, 3=Depth, 4=Normal
-  int viewMode = 1; // Default to Original
+  int viewMode = 1; // Default to Original (used by Maps tab)
   bool isLightingEnabled = false;
+
+  // Active bottom nav tab: 0=Maps, 1=Lights, 2=Controls
+  int activeTab = 1;
 
   List<LightSource> lights = [];
   int selectedLightIndex = -1;
@@ -26,6 +29,24 @@ class LightingState extends ChangeNotifier {
   double shadowSoftness = 0.5;
   Color ambientColor = const Color(0xFF1A1A1A);
 
+  /// Compute the effective view mode based on the active tab.
+  /// Maps tab: use user-selected viewMode (Original/Albedo/Depth/Normal)
+  /// Lights/Controls tabs: show Lit (0) if lighting enabled, Original (1) if not
+  int get effectiveViewMode {
+    if (activeTab == 0) {
+      // Maps tab — show whatever map the user selected
+      return viewMode;
+    } else {
+      // Lights or Controls tab — show lit scene or original
+      return isLightingEnabled ? 0 : 1;
+    }
+  }
+
+  void setActiveTab(int tab) {
+    activeTab = tab;
+    notifyListeners();
+  }
+
   void setViewMode(int mode) {
     viewMode = mode;
     notifyListeners();
@@ -33,24 +54,23 @@ class LightingState extends ChangeNotifier {
 
   void toggleLighting(bool enabled) {
     isLightingEnabled = enabled;
-    viewMode = enabled ? 0 : 1;
+    // Don't change viewMode — the effectiveViewMode getter handles this
     notifyListeners();
   }
 
   void addLight() {
     if (lights.length < 4) {
       lights.add(LightSource(
-        pos: Vector3(200.0, 300.0, 200.0),
+        pos: Vector3(150.0, 150.0, 200.0),
         color: Colors.white,
         intensity: 1500.0,
       ));
       selectedLightIndex = lights.length - 1;
       // Auto-enable lighting if not enabled
       if (!isLightingEnabled) {
-        toggleLighting(true);
-      } else {
-        notifyListeners();
+        isLightingEnabled = true;
       }
+      notifyListeners();
     }
   }
 
@@ -59,10 +79,9 @@ class LightingState extends ChangeNotifier {
       lights.removeAt(selectedLightIndex);
       selectedLightIndex = lights.isEmpty ? -1 : 0;
       if (lights.isEmpty) {
-        toggleLighting(false);
-      } else {
-        notifyListeners();
+        isLightingEnabled = false;
       }
+      notifyListeners();
     }
   }
 

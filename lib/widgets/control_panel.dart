@@ -45,6 +45,7 @@ class _ControlPanelState extends State<ControlPanel> {
             unselectedItemColor: Colors.white54,
             currentIndex: _currentIndex >= 0 ? _currentIndex : 0, // Fallback to 0 if minimized just for UI, but handle tap below
             onTap: (idx) {
+              final state = context.read<LightingState>();
               setState(() {
                 if (_currentIndex == idx) {
                   _currentIndex = -1; // Minimize on double tap
@@ -52,6 +53,8 @@ class _ControlPanelState extends State<ControlPanel> {
                   _currentIndex = idx;
                 }
               });
+              // Sync active tab to LightingState so the canvas knows which view to show
+              state.setActiveTab(_currentIndex >= 0 ? _currentIndex : state.activeTab);
             },
             items: [
               BottomNavigationBarItem(
