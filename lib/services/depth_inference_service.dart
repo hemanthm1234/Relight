@@ -41,32 +41,65 @@ class DepthInferenceService {
     }
 
     final rawBytes = await imageFile.readAsBytes();
-    // Move array restructuring and normalization into a separate Isolate thread
-    final Float32List preprocessedTensor = await compute(_preprocessImageThread, rawBytes);
+    
+    // Perform array restructuring, inference, and normalization in a separate Isolate thread
+    // This totally unblocks the main isolate so the UI spinner remains smooth
+    final Float32List computedDepthMatrix = await compute(_fullInferenceTask, {
+      'address': _interpreter!.address,
+      'rawBytes': rawBytes,
+      'modelInputSize': modelInputSize,
+    });
 
-    // Prepare output tensor payload configuration matching: [1, 518, 518, 1]
+    return computedDepthMatrix;
+  }
+
+  static Float32List _fullInferenceTask(Map<String, dynamic> args) {
+    final int address = args['address'];
+    final Uint8List rawBytes = args['rawBytes'];
+    final int inputSize = args['modelInputSize'];
+
+    // 1. Preprocess
+    img.Image? decoded = img.decodeImage(rawBytes);
+    if (decoded == null) throw Exception("Failed to parse image formats.");
+
+    img.Image resized = img.copyResize(decoded, width: inputSize, height: inputSize);
+    final tensorBuffer = Float32List(1 * 3 * inputSize * inputSize);
+
+    int pixelIndex = 0;
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        img.Pixel pixel = resized.getPixel(x, y);
+        tensorBuffer[pixelIndex * 3] = pixel.r / 255.0;
+        tensorBuffer[pixelIndex * 3 + 1] = pixel.g / 255.0;
+        tensorBuffer[pixelIndex * 3 + 2] = pixel.b / 255.0;
+        pixelIndex++;
+      }
+    }
+
+    // 2. Initialize Interpreter from address
+    Interpreter isolateInterpreter = Interpreter.fromAddress(address);
+
     var outputBuffer = List.generate(
       1, (_) => List.generate(
-        modelInputSize, (_) => List.generate(
-          modelInputSize, (_) => List.filled(1, 0.0)
+        inputSize, (_) => List.generate(
+          inputSize, (_) => List.filled(1, 0.0)
         )
       )
     );
 
-    // Forwarding pass across the local silicon array
-    _interpreter!.run(preprocessedTensor.reshape([1, modelInputSize, modelInputSize, 3]), outputBuffer);
+    // 3. Run Inference synchronously inside the isolate
+    isolateInterpreter.run(tensorBuffer.reshape([1, inputSize, inputSize, 3]), outputBuffer);
 
-    // Flatten multi-dimensional output array to an optimized single continuous Float32 list
-    final Float32List flattenedDepthMap = Float32List(modelInputSize * modelInputSize);
+    // 4. Flatten and Normalize
+    final Float32List flattenedDepthMap = Float32List(inputSize * inputSize);
     int index = 0;
     
-    // Find absolute boundaries for localized linear contrast scaling
     double minVal = double.infinity;
     double maxVal = double.negativeInfinity;
     
-    for (int y = 0; y < modelInputSize; y++) {
-      for (int x = 0; x < modelInputSize; x++) {
-        double val = outputBuffer[0][y][x][0];
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        double val = (outputBuffer[0][y][x][0] as num).toDouble();
         if (val < minVal) minVal = val;
         if (val > maxVal) maxVal = val;
       }
@@ -74,42 +107,13 @@ class DepthInferenceService {
     
     double range = (maxVal - minVal) > 0 ? (maxVal - minVal) : 1.0;
 
-    for (int y = 0; y < modelInputSize; y++) {
-      for (int x = 0; x < modelInputSize; x++) {
-        // Linearly normalize depth results to full 0.0 - 1.0 space metrics
-        flattenedDepthMap[index++] = (outputBuffer[0][y][x][0] - minVal) / range;
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        flattenedDepthMap[index++] = ((outputBuffer[0][y][x][0] as num).toDouble() - minVal) / range;
       }
     }
 
     return flattenedDepthMap;
-  }
-
-  static Float32List _preprocessImageThread(Uint8List rawBytes) {
-    img.Image? decoded = img.decodeImage(rawBytes);
-    if (decoded == null) throw Exception("Failed to parse image formats.");
-
-    img.Image resized = img.copyResize(decoded, width: modelInputSize, height: modelInputSize);
-    final tensorBuffer = Float32List(1 * 3 * modelInputSize * modelInputSize);
-    int channelStride = modelInputSize * modelInputSize;
-
-    int pixelIndex = 0;
-    for (int y = 0; y < modelInputSize; y++) {
-      for (int x = 0; x < modelInputSize; x++) {
-        img.Pixel pixel = resized.getPixel(x, y);
-
-        // Map RGB channels down to linear normalization ranges [0.0, 1.0]
-        double r = pixel.r / 255.0;
-        double g = pixel.g / 255.0;
-        double b = pixel.b / 255.0;
-
-        // Interleaved/HWC data structure arrangement : [R, G, B, R, G, B...]
-        tensorBuffer[pixelIndex * 3] = r;
-        tensorBuffer[pixelIndex * 3 + 1] = g;
-        tensorBuffer[pixelIndex * 3 + 2] = b;
-        pixelIndex++;
-      }
-    }
-    return tensorBuffer;
   }
 
   void dispose() {

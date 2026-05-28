@@ -29,6 +29,8 @@ class LightingState extends ChangeNotifier {
   double shadowSoftness = 0.5;
   Color ambientColor = const Color(0xFF1A1A1A);
 
+  double get ambientIntensity => ambientColor.red / 255.0;
+
   /// Compute the effective view mode based on the active tab.
   /// Maps tab: use user-selected viewMode (Original/Albedo/Depth/Normal)
   /// Lights/Controls tabs: show Lit (0) if lighting enabled, Original (1) if not
@@ -113,12 +115,15 @@ class LightingState extends ChangeNotifier {
     double? newRoughness,
     double? newMetallic,
     double? newShadowSoftness,
-    Color? newAmbient,
+    double? newAmbientIntensity,
   }) {
     if (newRoughness != null) roughness = newRoughness;
     if (newMetallic != null) metallic = newMetallic;
     if (newShadowSoftness != null) shadowSoftness = newShadowSoftness;
-    if (newAmbient != null) ambientColor = newAmbient;
+    if (newAmbientIntensity != null) {
+      int v = (newAmbientIntensity * 255).clamp(0, 255).toInt();
+      ambientColor = Color.fromARGB(255, v, v, v);
+    }
     notifyListeners();
   }
 }

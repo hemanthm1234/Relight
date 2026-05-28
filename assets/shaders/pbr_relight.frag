@@ -29,7 +29,7 @@ uniform vec3 u_LightPos_3; uniform vec3 u_LightColor_3; uniform float u_LightInt
 out vec4 fragColor;
 
 float getLuminance(vec3 color) {
-    return dot(color, vec3(0.299, 0.587, 0.114));
+    return dot(color, vec3(0.2989999949932098388671875, 0.58700001239776611328125, 0.114000000059604644775390625));
 }
 
 // Get the local pixel coordinate relative to the fitted image
@@ -64,7 +64,7 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, vec3 s
 
     for (int i = 0; i < maxSteps; i++) {
         // Convert ray position to UV for depth sampling
-        vec2 sampleUV = (currentRayPos.xy - u_DrawOffset) / u_DrawSize;
+        vec2 sampleUV = (currentRayPos.xy) / u_DrawSize;
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) break;
         
         float geomDepth = texture(u_DepthTex, sampleUV).r * 400.0;
@@ -177,13 +177,25 @@ void main() {
     vec3 camPos = vec3(u_DrawSize.x / 2.0, u_DrawSize.y / 2.0, 800.0);
     vec3 v = normalize(camPos - surfacePos);
 
-    vec3 accumulatedLighting = u_AmbientLight * albedo;
+    vec3 originalColor = texture(u_OriginalTex, uv).rgb;
 
-    accumulatedLighting += computeLight(0, u_LightPos_0, u_LightColor_0, u_LightIntensity_0, surfacePos, n, v, albedo);
-    accumulatedLighting += computeLight(1, u_LightPos_1, u_LightColor_1, u_LightIntensity_1, surfacePos, n, v, albedo);
-    accumulatedLighting += computeLight(2, u_LightPos_2, u_LightColor_2, u_LightIntensity_2, surfacePos, n, v, albedo);
-    accumulatedLighting += computeLight(3, u_LightPos_3, u_LightColor_3, u_LightIntensity_3, surfacePos, n, v, albedo);
+    // 1. Isolate the Ambient Baseline (Do NOT multiply this by PI)
+    vec3 ambientLighting = u_AmbientLight * originalColor;
 
+    // 2. Accumulate Artificial Point Lights
+    vec3 pointLighting = vec3(0.0);
+    pointLighting += computeLight(0, u_LightPos_0, u_LightColor_0, u_LightIntensity_0, surfacePos, n, v, originalColor);
+    pointLighting += computeLight(1, u_LightPos_1, u_LightColor_1, u_LightIntensity_1, surfacePos, n, v, originalColor);
+    pointLighting += computeLight(2, u_LightPos_2, u_LightColor_2, u_LightIntensity_2, surfacePos, n, v, originalColor);
+    pointLighting += computeLight(3, u_LightPos_3, u_LightColor_3, u_LightIntensity_3, surfacePos, n, v, originalColor);
+
+    // 3. Apply the PI boost ONLY to the point lights to balance the BRDF diffuse integral
+    pointLighting *= 3.1415926535;
+
+    // 4. Combine for final radiance
+    vec3 accumulatedLighting = ambientLighting + pointLighting;
+
+    // 5. ACES Tonemapping
     float a = 2.51;
     float b = 0.03;
     float c = 2.43;

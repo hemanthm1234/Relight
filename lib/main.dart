@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import 'models/lighting_state.dart';
 import 'services/depth_inference_service.dart';
 import 'services/image_processing_service.dart';
@@ -46,6 +47,7 @@ class RelighterWorkspace extends StatefulWidget {
 class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   final DepthInferenceService _inferenceService = DepthInferenceService();
   final ImageProcessingService _imageService = ImageProcessingService();
+  final ImagePicker _picker = ImagePicker();
   
   bool _isLoading = false;
   String _statusMessage = "Loading Local AI Core Engine...";
@@ -79,27 +81,39 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      await _executeInferenceOn(File(image.path));
+    }
+  }
+
   Future<void> _processAssetPipeline() async {
+    // For standalone execution initialization from scratch, load an internal workspace asset image.
+    final ByteData assetRawData = await rootBundle.load('assets/images/sample.jpg');
+    final Uint8List imgBytes = assetRawData.buffer.asUint8List();
+    
+    // Write temporarily to local disk cache structure context for model ingestion formats
+    final tempDir = Directory.systemTemp;
+    final tempFile = File('${tempDir.path}/ingest_cache.jpg');
+    await tempFile.writeAsBytes(imgBytes);
+
+    await _executeInferenceOn(tempFile);
+  }
+
+  Future<void> _executeInferenceOn(File imageFile) async {
     setState(() {
       _isLoading = true;
-      _statusMessage = "Running Monocular Inference Pipeline Context...";
+      _statusMessage = "Estimating Depth Map...";
     });
 
     try {
-      // For standalone execution initialization from scratch, load an internal workspace asset image.
-      // (User option: integrate image_picker dependency here to load live gallery context files)
-      final ByteData assetRawData = await rootBundle.load('assets/images/sample.jpg');
-      final Uint8List imgBytes = assetRawData.buffer.asUint8List();
-      
-      // Write temporarily to local disk cache structure context for model ingestion formats
-      final tempDir = Directory.systemTemp;
-      final tempFile = File('${tempDir.path}/ingest_cache.jpg');
-      await tempFile.writeAsBytes(imgBytes);
+      final imgBytes = await imageFile.readAsBytes();
 
       // Execute Depth Estimator Layer locally on Mobile hardware
-      final Float32List computedDepthMatrix = await _inferenceService.runLocalInference(tempFile);
-
-      setState(() => _statusMessage = "Executing Structural Intrinsic Separation Processing...");
+      final Float32List computedDepthMatrix = await _inferenceService.runLocalInference(imageFile);
+      
+      setState(() => _statusMessage = "Estimating Albedo and Normal Maps...");
       final Map<String, Uint8List> texturePack = await _imageService.executeIntrinsicDecomposition(imgBytes, computedDepthMatrix);
 
       // Transition structured byte lists into accelerated GPU Texture handles concurrently
@@ -116,6 +130,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _statusMessage = "Pipeline Exception thrown: $e";
@@ -149,9 +164,9 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
             ),
           if (_shader != null && !_isLoading)
             IconButton(
-              icon: const Icon(Icons.photo_library),
-              onPressed: _processAssetPipeline,
-              tooltip: "Process Base Workspace Target",
+              icon: const Icon(Icons.add_photo_alternate),
+              onPressed: _pickImage,
+              tooltip: "Select Workspace Target from Gallery",
             )
         ],
       ),

@@ -202,6 +202,12 @@ class _ControlPanelState extends State<ControlPanel> {
       child: Column(
         children: [
           _buildSlider(
+            label: "Ambient Intensity",
+            value: state.ambientIntensity,
+            min: 0.0, max: 1.0,
+            onChanged: (v) => state.updateGlobalParameters(newAmbientIntensity: v),
+          ),
+          _buildSlider(
             label: "Global Roughness",
             value: state.roughness,
             min: 0.05, max: 1.0,
