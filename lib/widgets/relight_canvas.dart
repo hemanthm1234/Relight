@@ -194,9 +194,9 @@ class PBRShaderPainter extends CustomPainter {
       final double screenY = light.pos.y + drawRect.top;
       final Offset center = Offset(screenX, screenY);
 
-      // Center dot: radius inversely proportional to depth
-      final double depthNorm = (light.pos.z / maxZ).clamp(0.0, 1.0);
-      final double dotRadius = maxDotRadius * (1.0 - depthNorm) + minDotRadius;
+      // Center dot: radius proportional to height (Z) so that closer to camera = bigger
+      final double heightNorm = (light.pos.z / maxZ).clamp(0.0, 1.0);
+      final double dotRadius = minDotRadius + (maxDotRadius - minDotRadius) * heightNorm;
 
       // Outer circle: radius proportional to intensity
       final double intensityNorm = ((light.intensity - minIntensity) / (maxIntensity - minIntensity)).clamp(0.0, 1.0);

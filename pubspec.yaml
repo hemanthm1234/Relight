@@ -1,6 +1,6 @@
 name: local_pbr_relighter
 description: "A local real-time monocular PBR relighting mobile app using Depth-Anything-V2 and custom GLSL fragment shaders."
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

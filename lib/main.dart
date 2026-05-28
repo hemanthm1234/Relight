@@ -74,7 +74,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
       
       setState(() {
         _isLoading = false;
-        _statusMessage = "Ready for Workspace Generation.";
+        _statusMessage = "Ready to imagine a New World!!";
       });
     } catch (e) {
       setState(() => _statusMessage = "Initialization Failure: $e");
