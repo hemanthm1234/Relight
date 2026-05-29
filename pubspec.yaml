@@ -13,6 +13,7 @@ dependencies:
   vector_math: ^2.1.4
   provider: ^6.1.2
   image_picker: ^1.2.2
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
@@ -31,5 +32,6 @@ flutter:
     - assets/models/depth_anything_v2.tflite
     - assets/models/depth_anything_v3.tflite
     - assets/images/sample.jpg
+    - assets/cache/
   shaders:
     - assets/shaders/pbr_relight.frag
