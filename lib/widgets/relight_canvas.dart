@@ -97,6 +97,8 @@ class PBRShaderPainter extends CustomPainter {
   final ui.Image depth;
   final LightingState state;
   final Rect drawRect;
+  final double scale;
+  final bool showIndicators;
 
   PBRShaderPainter({
     required this.shader,
@@ -105,6 +107,8 @@ class PBRShaderPainter extends CustomPainter {
     required this.depth,
     required this.state,
     required this.drawRect,
+    this.scale = 1.0,
+    this.showIndicators = true,
   });
 
   @override
@@ -147,9 +151,12 @@ class PBRShaderPainter extends CustomPainter {
     shader.setFloat(fi++, state.ambientColor.b); 
     shader.setFloat(fi++, state.shadowSoftness); 
 
-    // Lights (15+)
+    // Lights (15)
     int numLights = state.lights.length.clamp(0, 4);
     shader.setFloat(fi++, numLights.toDouble()); 
+    
+    // Scale Factor (16)
+    shader.setFloat(fi++, scale);
 
     for (int i = 0; i < 4; i++) {
       if (i < numLights) {
@@ -173,13 +180,13 @@ class PBRShaderPainter extends CustomPainter {
     final Paint shaderPaint = Paint()..shader = shader;
     canvas.drawRect(drawRect, shaderPaint);
 
-    if (state.isLightingEnabled && state.lights.isNotEmpty) {
+    if (showIndicators && state.isLightingEnabled && state.lights.isNotEmpty) {
       _drawLightIndicators(canvas);
     }
   }
 
   void _drawLightIndicators(Canvas canvas) {
-    const double maxZ = 800.0;
+    const double maxZ = 2400.0;
     const double minDotRadius = 4.0;
     const double maxDotRadius = 14.0;
     const double minCircleRadius = 18.0;

@@ -19,6 +19,7 @@ uniform float u_Metallic;
 uniform vec3 u_AmbientLight;
 uniform float u_ShadowSoftness;
 uniform float u_ActiveLights;
+uniform float u_Scale;
 
 // Fixed 4 lights max to ensure deterministic uniform float indices
 uniform vec3 u_LightPos_0; uniform vec3 u_LightColor_0; uniform float u_LightIntensity_0;
@@ -58,7 +59,7 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, vec3 s
 
     float V_shadow = 1.0;
     int maxSteps = 32;
-    vec3 rayStep = (l * 6.0);
+    vec3 rayStep = (l * 6.0 * u_Scale);
     vec3 currentRayPos = surfacePos + rayStep;
     float shadowAccum = 0.0;
 
@@ -67,11 +68,11 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, vec3 s
         vec2 sampleUV = (currentRayPos.xy) / u_DrawSize;
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) break;
         
-        float geomDepth = texture(u_DepthTex, sampleUV).r * 400.0;
+        float geomDepth = texture(u_DepthTex, sampleUV).r * 1200.0 * u_Scale;
         
-        if (currentRayPos.z < geomDepth - 1.5) {
-            float depthDifference = (geomDepth - 1.5) - currentRayPos.z;
-            shadowAccum += vec3(1.0).r * (1.0 - smoothstep(0.0, u_ShadowSoftness * 10.0, depthDifference));
+        if (currentRayPos.z < geomDepth - (1.5 * u_Scale)) {
+            float depthDifference = (geomDepth - (1.5 * u_Scale)) - currentRayPos.z;
+            shadowAccum += vec3(1.0).r * (1.0 - smoothstep(0.0, u_ShadowSoftness * 10.0 * u_Scale, depthDifference));
         }
         currentRayPos += rayStep;
     }
@@ -138,23 +139,35 @@ void main() {
     // Compute normals from depth (needed for modes 0 and 4)
     vec2 texelSize = 1.0 / u_DrawSize;
     
-    float dL = texture(u_DepthTex, uv + vec2(-texelSize.x, 0.0)).r;
-    float dR = texture(u_DepthTex, uv + vec2(texelSize.x, 0.0)).r;
-    float dT = texture(u_DepthTex, uv + vec2(0.0, texelSize.y)).r;
-    float dB = texture(u_DepthTex, uv + vec2(0.0, -texelSize.y)).r;
-    float d_dx = (dR - dL) * 2.0;
-    float d_dy = (dT - dB) * 2.0;
+    // Compute unified heights for 3x3 Sobel
+    // Unified height: H = D * 2.0 + G * u_Roughness * 0.5
 
-    float gL = getLuminance(texture(u_OriginalTex, uv + vec2(-texelSize.x, 0.0)).rgb);
-    float gR = getLuminance(texture(u_OriginalTex, uv + vec2(texelSize.x, 0.0)).rgb);
-    float gT = getLuminance(texture(u_OriginalTex, uv + vec2(0.0, texelSize.y)).rgb);
-    float gB = getLuminance(texture(u_OriginalTex, uv + vec2(0.0, -texelSize.y)).rgb);
-    float g_dx = (gR - gL) * 1.5;
-    float g_dy = (gT - gB) * 1.5;
+    float w_d = 1.0;
+    float w_g = 0.5;
 
-    float blended_dx = d_dx + (g_dx * u_Roughness); 
-    float blended_dy = d_dy + (g_dy * u_Roughness);
-    vec3 n = normalize(vec3(-blended_dx, -blended_dy, 1.0));
+    float h00 = texture(u_DepthTex, uv + vec2(-texelSize.x, texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(-texelSize.x, texelSize.y)).rgb) * u_Roughness * w_g;
+    float h01 = texture(u_DepthTex, uv + vec2(0.0, texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(0.0, texelSize.y)).rgb) * u_Roughness * w_g;
+    float h02 = texture(u_DepthTex, uv + vec2(texelSize.x, texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(texelSize.x, texelSize.y)).rgb) * u_Roughness * w_g;
+
+    float h10 = texture(u_DepthTex, uv + vec2(-texelSize.x, 0.0)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(-texelSize.x, 0.0)).rgb) * u_Roughness * w_g;
+    float h12 = texture(u_DepthTex, uv + vec2(texelSize.x, 0.0)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(texelSize.x, 0.0)).rgb) * u_Roughness * w_g;
+
+    float h20 = texture(u_DepthTex, uv + vec2(-texelSize.x, -texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(-texelSize.x, -texelSize.y)).rgb) * u_Roughness * w_g;
+    float h21 = texture(u_DepthTex, uv + vec2(0.0, -texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(0.0, -texelSize.y)).rgb) * u_Roughness * w_g;
+    float h22 = texture(u_DepthTex, uv + vec2(texelSize.x, -texelSize.y)).r * w_d + getLuminance(texture(u_OriginalTex, uv + vec2(texelSize.x, -texelSize.y)).rgb) * u_Roughness * w_g;
+
+    // Full 3x3 Sobel filter
+    float dx = (-h00 + h02) + (-2.0*h10 + 2.0*h12) + (-h20 + h22);
+    float dy = (-h00 - 2.0*h01 - h02) + (h20 + 2.0*h21 + h22);
+
+    // Apply dynamic bump strength exactly as in Python
+    float bumpStrength = 0.1;
+    float dynamicStrength = bumpStrength * max(u_DrawSize.x, u_DrawSize.y);
+    
+    dx *= dynamicStrength;
+    dy *= dynamicStrength;
+
+    vec3 n = normalize(vec3(-dx, dy, 1.0));
 
     // Mode 4: Normal map visualization
     if (mode == 4) {
@@ -171,10 +184,10 @@ void main() {
 
     // Use localized coordinates so it perfectly matches the light positions mapped in Dart
     vec2 localXY = getLocalCoord();
-    vec3 surfacePos = vec3(localXY, depth * 400.0);
+    vec3 surfacePos = vec3(localXY, depth * 1200.0 * u_Scale);
 
     // Camera now centers directly over the localized image space
-    vec3 camPos = vec3(u_DrawSize.x / 2.0, u_DrawSize.y / 2.0, 800.0);
+    vec3 camPos = vec3(u_DrawSize.x / 2.0, u_DrawSize.y / 2.0, 2400.0 * u_Scale);
     vec3 v = normalize(camPos - surfacePos);
 
     vec3 originalColor = texture(u_OriginalTex, uv).rgb;

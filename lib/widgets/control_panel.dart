@@ -178,9 +178,9 @@ class _ControlPanelState extends State<ControlPanel> {
             ),
             _buildSlider(
               label: "Light Depth",
-              value: 800.0 - activeLight.pos.z,
-              min: 0.0, max: 800.0,
-              onChanged: (v) => state.updateSelectedLightPos(activeLight.pos.x, activeLight.pos.y, z: 800.0 - v),
+              value: activeLight.pos.z,
+              min: -400.0, max: 2400.0,
+              onChanged: (v) => state.updateSelectedLightPos(activeLight.pos.x, activeLight.pos.y, z: v),
             ),
             const SizedBox(height: 12),
             Row(

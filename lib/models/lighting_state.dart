@@ -60,7 +60,7 @@ class LightingState extends ChangeNotifier {
   void addLight() {
     if (lights.length < 4) {
       lights.add(LightSource(
-        pos: Vector3(150.0, 150.0, 200.0),
+        pos: Vector3(150.0, 150.0, 600.0),
         color: Colors.white,
         intensity: 1500.0,
       ));
