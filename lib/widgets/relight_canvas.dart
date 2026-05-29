@@ -164,14 +164,16 @@ class PBRShaderPainter extends CustomPainter {
         shader.setFloat(fi++, light.color.b);
         shader.setFloat(fi++, light.intensity);
       } else {
-        for(int p = 0; p < 7; p++) shader.setFloat(fi++, 0.0);
+        for(int p = 0; p < 7; p++) {
+          shader.setFloat(fi++, 0.0);
+        }
       }
     }
 
     final Paint shaderPaint = Paint()..shader = shader;
     canvas.drawRect(drawRect, shaderPaint);
 
-    if (effectiveMode == 0 && state.lights.isNotEmpty) {
+    if (state.isLightingEnabled && state.lights.isNotEmpty) {
       _drawLightIndicators(canvas);
     }
   }

@@ -10,6 +10,7 @@ import 'services/depth_inference_service.dart';
 import 'services/image_processing_service.dart';
 import 'widgets/control_panel.dart';
 import 'widgets/relight_canvas.dart';
+import 'widgets/map_selector.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -173,6 +174,9 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
       body: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
         ? Column(
             children: [
+
+              const GlobalMapSelector(),
+
               Expanded(
                 child: RelightCanvas(
                   albedoTexture: _albedoTex!,
@@ -181,6 +185,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
                   compiledShader: _shader!,
                 ),
               ),
+
               const ControlPanel(),
             ],
           )

@@ -10,7 +10,19 @@ class ControlPanel extends StatefulWidget {
 }
 
 class _ControlPanelState extends State<ControlPanel> {
-  int _currentIndex = 1;
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      context.read<LightingState>().setActiveTab(1);
+    });
+  }
+
+  int _currentIndex = 0;
+  int _lastExpandedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -25,11 +37,27 @@ class _ControlPanelState extends State<ControlPanel> {
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () {
-              if (_currentIndex != -1) {
-                setState(() => _currentIndex = -1);
-              } else {
-                setState(() => _currentIndex = 1);
-              }
+
+              final state = context.read<LightingState>();
+
+              setState(() {
+
+                if (_currentIndex == -1) {
+
+                  _currentIndex = _lastExpandedIndex;
+
+                  state.setActiveTab(
+                    _currentIndex + 1,
+                  );
+
+                } else {
+
+                  _lastExpandedIndex = _currentIndex;
+
+                  _currentIndex = -1;
+                }
+
+              });
             },
             child: Container(
               width: 40,
@@ -43,7 +71,12 @@ class _ControlPanelState extends State<ControlPanel> {
             backgroundColor: Colors.transparent,
             selectedItemColor: Colors.blueAccent,
             unselectedItemColor: Colors.white54,
-            currentIndex: _currentIndex >= 0 ? _currentIndex : 0, // Fallback to 0 if minimized just for UI, but handle tap below
+            currentIndex: _currentIndex == -1 ? _lastExpandedIndex : _currentIndex, // Fallback to 0 if minimized just for UI, but handle tap below
+            type: BottomNavigationBarType.fixed,
+            showSelectedLabels: true,
+            showUnselectedLabels: true,
+            elevation: 0,
+
             onTap: (idx) {
               final state = context.read<LightingState>();
               setState(() {
@@ -54,20 +87,27 @@ class _ControlPanelState extends State<ControlPanel> {
                 }
               });
               // Sync active tab to LightingState so the canvas knows which view to show
-              state.setActiveTab(_currentIndex >= 0 ? _currentIndex : state.activeTab);
+              if (_currentIndex >= 0) {
+                state.setActiveTab(_currentIndex + 1);
+              }
             },
             items: [
               BottomNavigationBarItem(
-                icon: Icon(_currentIndex == 0 ? Icons.map : Icons.map_outlined), 
-                label: 'Maps'
+                icon: Icon(
+                  _currentIndex == 0
+                  ? Icons.lightbulb
+                  : Icons.lightbulb_outline,
+                ),
+                label: 'Lights',
               ),
+
               BottomNavigationBarItem(
-                icon: Icon(_currentIndex == 1 ? Icons.lightbulb : Icons.lightbulb_outline), 
-                label: 'Lights'
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(_currentIndex == 2 ? Icons.tune : Icons.tune_outlined), 
-                label: 'Controls'
+                icon: Icon(
+                  _currentIndex == 1
+                  ? Icons.tune
+                  : Icons.tune_outlined,
+                ),
+                label: 'Controls',
               ),
             ],
           ),
@@ -77,35 +117,11 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 
   Widget _buildActiveTabContent(BuildContext context) {
-    if (_currentIndex == 0) return _buildMapsTab(context);
-    if (_currentIndex == 1) return _buildLightsTab(context);
-    return _buildControlsTab(context);
-  }
+    if (_currentIndex == 0) {
+      return _buildLightsTab(context);
+    }
 
-  Widget _buildMapsTab(BuildContext context) {
-    final state = context.watch<LightingState>();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _ViewModeBtn(label: "Original", mode: 1, current: state.viewMode, onTap: state.setViewMode),
-              _ViewModeBtn(label: "Albedo", mode: 2, current: state.viewMode, onTap: state.setViewMode),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _ViewModeBtn(label: "Depth", mode: 3, current: state.viewMode, onTap: state.setViewMode),
-              _ViewModeBtn(label: "Normal", mode: 4, current: state.viewMode, onTap: state.setViewMode),
-            ],
-          )
-        ],
-      ),
-    );
+    return _buildControlsTab(context);
   }
 
   Widget _buildLightsTab(BuildContext context) {
@@ -246,28 +262,6 @@ class _ControlPanelState extends State<ControlPanel> {
           Slider( value: value, min: min, max: max, activeColor: Colors.blueAccent, inactiveColor: Colors.white24, onChanged: onChanged ),
         ],
       ),
-    );
-  }
-}
-
-class _ViewModeBtn extends StatelessWidget {
-  final String label;
-  final int mode;
-  final int current;
-  final Function(int) onTap;
-
-  const _ViewModeBtn({required this.label, required this.mode, required this.current, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final active = mode == current;
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: active ? Colors.blueAccent : Colors.grey[800],
-        foregroundColor: active ? Colors.white : Colors.white70,
-      ),
-      onPressed: () => onTap(mode),
-      child: Text(label),
     );
   }
 }

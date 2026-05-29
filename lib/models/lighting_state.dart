@@ -35,13 +35,10 @@ class LightingState extends ChangeNotifier {
   /// Maps tab: use user-selected viewMode (Original/Albedo/Depth/Normal)
   /// Lights/Controls tabs: show Lit (0) if lighting enabled, Original (1) if not
   int get effectiveViewMode {
-    if (activeTab == 0) {
-      // Maps tab — show whatever map the user selected
-      return viewMode;
-    } else {
-      // Lights or Controls tab — show lit scene or original
+    if (viewMode == 1) {
       return isLightingEnabled ? 0 : 1;
     }
+    return viewMode;
   }
 
   void setActiveTab(int tab) {
