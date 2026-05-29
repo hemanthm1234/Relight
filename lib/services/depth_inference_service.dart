@@ -7,29 +7,48 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 class DepthInferenceService {
   Interpreter? _interpreter;
   bool _isInitialized = false;
-  static const int modelInputSize = 518; // Size required for quantized Depth-Anything-V2-Small mobile profile
+  String? _currentModelPath;
+  static const int modelInputSize = 518; // Size required for quantized Depth-Anything mobile profile
 
   bool get isInitialized => _isInitialized;
+  String? get currentModelPath => _currentModelPath;
 
-  Future<void> initializeEngine() async {
-    if (_isInitialized) return;
+  Future<void> initializeEngine(String modelAssetPath) async {
+    if (_isInitialized && _currentModelPath == modelAssetPath && _interpreter != null) {
+      debugPrint("Depth engine already initialized with model: $modelAssetPath.");
+      return;
+    }
+    
+    // Close existing interpreter
+    try {
+      _interpreter?.close();
+    } catch (e) {
+      debugPrint("Error closing previous interpreter: $e");
+    }
+    _interpreter = null;
+    _isInitialized = false;
+    _currentModelPath = null;
+
     try {
       final options = InterpreterOptions();
       options.threads = 4;
       
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/depth_anything_v2.tflite',
+        modelAssetPath,
         options: options,
       );
       _isInitialized = true;
-      debugPrint("Local Hardware Accelerated Depth-Anything-V2 engine online.");
+      _currentModelPath = modelAssetPath;
+      debugPrint("Local Hardware Accelerated Depth engine online with model: $modelAssetPath.");
     } catch (e) {
       debugPrint("NNAPI initialization failed. Falling back to default CPU interpreter execution: $e");
       try {
-        _interpreter = await Interpreter.fromAsset('assets/models/depth_anything_v2.tflite');
+        _interpreter = await Interpreter.fromAsset(modelAssetPath);
         _isInitialized = true;
+        _currentModelPath = modelAssetPath;
       } catch (criticalError) {
         debugPrint("Critical Error mapping TFLite model binary: $criticalError");
+        rethrow;
       }
     }
   }

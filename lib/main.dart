@@ -51,7 +51,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   final ImagePicker _picker = ImagePicker();
   
   bool _isLoading = false;
-  String _statusMessage = "Loading Local AI Core Engine...";
+  String _statusMessage = "Initializing Graphics Shaders...";
   
   ui.FragmentShader? _shader;
   ui.Image? _albedoTex;
@@ -67,8 +67,6 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   Future<void> _bootAppEngines() async {
     setState(() => _isLoading = true);
     try {
-      await _inferenceService.initializeEngine();
-      
       // Load and compile graphics program runtime shaders
       final program = await ui.FragmentProgram.fromAsset('assets/shaders/pbr_relight.frag');
       _shader = program.fragmentShader();
@@ -82,14 +80,233 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     }
   }
 
+  Future<String?> _showModelSelectionSheet() async {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF161622),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(28.0),
+              topRight: Radius.circular(28.0),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 20.0,
+                offset: Offset(0, -5),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "Select Depth Model",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Choose a monocular depth estimation model",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white70,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  _buildModelOptionCard(
+                    context: context,
+                    title: "Depth-Anything-V2",
+                    subtitle: "Optimized, fast & balanced performance",
+                    icon: Icons.speed_outlined,
+                    badgeText: "Balanced",
+                    badgeColor: Colors.blueAccent,
+                    modelPath: "assets/models/depth_anything_v2.tflite",
+                  ),
+                  const SizedBox(height: 16),
+                  _buildModelOptionCard(
+                    context: context,
+                    title: "Depth-Anything-V3",
+                    subtitle: "Enhanced accuracy & crisp edge definition",
+                    icon: Icons.workspace_premium_outlined,
+                    badgeText: "Precision",
+                    badgeColor: Colors.purpleAccent,
+                    modelPath: "assets/models/depth_anything_v3.tflite",
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModelOptionCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required String badgeText,
+    required Color badgeColor,
+    required String modelPath,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withAlpha(20),
+          width: 1.0,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => Navigator.pop(context, modelPath),
+            splashColor: badgeColor.withAlpha(40),
+            highlightColor: badgeColor.withAlpha(20),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 5,
+                  child: Container(
+                    color: badgeColor,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20.0, 20.0, 16.0, 20.0),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withAlpha(30),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          icon,
+                          color: badgeColor,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: badgeColor.withAlpha(40),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: badgeColor.withAlpha(80),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    badgeText,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: badgeColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.white54,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white30,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      await _executeInferenceOn(File(image.path));
+      final selectedModel = await _showModelSelectionSheet();
+      if (selectedModel != null) {
+        await _executeInferenceOn(File(image.path), selectedModel);
+      }
     }
   }
 
   Future<void> _processAssetPipeline() async {
+    final selectedModel = await _showModelSelectionSheet();
+    if (selectedModel == null) return;
+    
     // For standalone execution initialization from scratch, load an internal workspace asset image.
     final ByteData assetRawData = await rootBundle.load('assets/images/sample.jpg');
     final Uint8List imgBytes = assetRawData.buffer.asUint8List();
@@ -99,17 +316,22 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     final tempFile = File('${tempDir.path}/ingest_cache.jpg');
     await tempFile.writeAsBytes(imgBytes);
 
-    await _executeInferenceOn(tempFile);
+    await _executeInferenceOn(tempFile, selectedModel);
   }
 
-  Future<void> _executeInferenceOn(File imageFile) async {
+  Future<void> _executeInferenceOn(File imageFile, String selectedModelPath) async {
     setState(() {
       _isLoading = true;
-      _statusMessage = "Estimating Depth Map...";
+      _statusMessage = "Loading Depth Model Engine...";
     });
 
     try {
       final imgBytes = await imageFile.readAsBytes();
+
+      // Ensure depth engine is initialized with the selected model
+      await _inferenceService.initializeEngine(selectedModelPath);
+
+      setState(() => _statusMessage = "Estimating Depth Map...");
 
       // Execute Depth Estimator Layer locally on Mobile hardware
       final Float32List computedDepthMatrix = await _inferenceService.runLocalInference(imageFile);

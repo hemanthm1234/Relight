@@ -29,6 +29,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/models/depth_anything_v2.tflite
+    - assets/models/depth_anything_v3.tflite
     - assets/images/sample.jpg
   shaders:
     - assets/shaders/pbr_relight.frag
