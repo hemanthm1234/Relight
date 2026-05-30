@@ -1,20 +1,20 @@
-/// ============================================================================
-/// File: lib/widgets/map_selector.dart
-/// Purpose: Multi-map buffer view selection widget.
-/// 
-/// Responsibility:
-/// - Displays a modern, floating toggle bar at the top of the active workspace.
-/// - Allows the user to select between four primary preview channels:
-///   1. Original: The unmodified target image.
-///   2. Albedo: The reflection map isolated from shading.
-///   3. Depth: The monocular depth estimation map.
-///   4. Normal: The surface orientation/bump normal vector map.
-/// - Dispatches visual view mode updates to the unified `LightingState` listener.
-/// ============================================================================
+// ============================================================================
+// File: lib/widgets/map_selector.dart
+// Purpose: Multi-map buffer view selection widget.
+// 
+// Responsibility:
+// - Displays a modern, floating toggle bar at the top of the active workspace.
+// - Allows the user to select between four primary preview channels:
+//   1. Original: The unmodified target image.
+//   2. Albedo: The reflection map isolated from shading.
+//   3. Depth: The monocular depth estimation map.
+//   4. Normal: The surface orientation/bump normal vector map.
+// - Dispatches visual view mode updates to the unified `LightingState` listener.
+// - Built with an elegant segmented glass design and glowing animated active tabs.
+// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../models/lighting_state.dart';
 
 class GlobalMapSelector extends StatelessWidget {
@@ -25,14 +25,19 @@ class GlobalMapSelector extends StatelessWidget {
     final state = context.watch<LightingState>();
 
     return Container(
-      // color: Colors.black,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 5,
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      height: 40,
+      decoration: BoxDecoration(
+        color: const Color(0xFF141418), // Deep premium dark background
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withAlpha(12),
+          width: 1.0,
+        ),
       ),
+      padding: const EdgeInsets.all(3.0),
       child: Row(
         children: [
-
           Expanded(
             child: _ViewModeBtn(
               label: "Original",
@@ -41,9 +46,7 @@ class GlobalMapSelector extends StatelessWidget {
               onTap: state.setViewMode,
             ),
           ),
-
-          const SizedBox(width: 8),
-
+          const SizedBox(width: 2),
           Expanded(
             child: _ViewModeBtn(
               label: "Albedo",
@@ -52,9 +55,7 @@ class GlobalMapSelector extends StatelessWidget {
               onTap: state.setViewMode,
             ),
           ),
-
-          const SizedBox(width: 8),
-
+          const SizedBox(width: 2),
           Expanded(
             child: _ViewModeBtn(
               label: "Depth",
@@ -63,9 +64,7 @@ class GlobalMapSelector extends StatelessWidget {
               onTap: state.setViewMode,
             ),
           ),
-
-          const SizedBox(width: 8),
-
+          const SizedBox(width: 2),
           Expanded(
             child: _ViewModeBtn(
               label: "Normal",
@@ -99,24 +98,30 @@ class _ViewModeBtn extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => onTap(mode),
-      child: Container(
-        height: 32,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeInOut,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? Colors.blueAccent : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: active
-                ? Colors.blueAccent
-                : Colors.white24,
-          ),
+          borderRadius: BorderRadius.circular(17),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: Colors.blueAccent.withAlpha(60),
+                    blurRadius: 8.0,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active
-                ? Colors.white
-                : Colors.white70,
+            color: active ? Colors.white : Colors.white.withAlpha(140),
+            fontSize: 11,
+            fontWeight: active ? FontWeight.bold : FontWeight.w500,
+            letterSpacing: 0.2,
           ),
         ),
       ),

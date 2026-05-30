@@ -1,16 +1,15 @@
-/// ============================================================================
-/// File: lib/services/depth_inference_service.dart
-/// Purpose: Performs hardware-accelerated monocular depth estimation.
-/// 
-/// Responsibility:
-/// - Manages the lifecycle of a quantized TensorFlow Lite (TFLite) interpreter (`tflite_flutter`).
-/// - Configures thread execution pools and falls back to CPU execution if hardware delegates fail.
-/// - Handles preprocessing (resizing images to 518x518 and normalizing RGB values) and runs inference in a background isolate to keep the UI responsive.
-/// - Post-processes and normalizes raw output matrices into a continuous [0.0, 1.0] relative depth map (Float32List).
-/// ============================================================================
+// ============================================================================
+// File: lib/services/depth_inference_service.dart
+// Purpose: Performs hardware-accelerated monocular depth estimation.
+// 
+// Responsibility:
+// - Manages the lifecycle of a quantized TensorFlow Lite (TFLite) interpreter (`tflite_flutter`).
+// - Configures thread execution pools and falls back to CPU execution if hardware delegates fail.
+// - Handles preprocessing (resizing images to 518x518 and normalizing RGB values) and runs inference in a background isolate to keep the UI responsive.
+// - Post-processes and normalizes raw output matrices into a continuous [0.0, 1.0] relative depth map (Float32List).
+// ============================================================================
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';

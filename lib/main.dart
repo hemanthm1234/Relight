@@ -1,13 +1,13 @@
-/// ============================================================================
-/// File: lib/main.dart
-/// Purpose: Main entry point and orchestration layer of the 3D Relighting app.
-/// 
-/// Responsibility:
-/// - Boots the Flutter application, restricts orientation, and hooks up the global `LightingState` notifier.
-/// - Builds the workspace interface (`RelighterWorkspace`), which coordinates asset pipelines for pre-baked caches (kUseCachedSample) or real-time ML-driven inference.
-/// - Integrates the model selection interface for choosing depth estimators (Depth-Anything-V2/V3) and exports compiled texture maps for workspace caches.
-/// - Coordinates high-resolution image baking, coordinate scaling, and secure export/download dialogs via the local file system.
-/// ============================================================================
+// ============================================================================
+// File: lib/main.dart
+// Purpose: Main entry point and orchestration layer of the 3D Relighting app.
+// 
+// Responsibility:
+// - Boots the Flutter application, restricts orientation, and hooks up the global `LightingState` notifier.
+// - Builds the workspace interface (`RelighterWorkspace`), which coordinates asset pipelines for pre-baked caches (kUseCachedSample) or real-time ML-driven inference.
+// - Integrates the model selection interface for choosing depth estimators (Depth-Anything-V2/V3) and exports compiled texture maps for workspace caches.
+// - Coordinates high-resolution image baking, coordinate scaling, and secure export/download dialogs via the local file system.
+// ============================================================================
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -52,7 +52,23 @@ class PBRRelighterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '🌟 Relight',
-      theme: ThemeData.dark(useMaterial3: true),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0C0C0E), // Premium dark background
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0F0F13), // Title bar background
+          elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+            color: Colors.white,
+          ),
+          iconTheme: IconThemeData(color: Colors.white70),
+        ),
+        useMaterial3: true,
+      ),
       debugShowCheckedModeBanner: false,
       home: const RelighterWorkspace(),
     );
@@ -468,7 +484,6 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         depth: _depthTex!,
         state: state,
         drawRect: screenDrawRect,
-        scale: scale,
         showIndicators: false,
       );
 
@@ -502,6 +517,8 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         _statusMessage = "Ready to Imagine a new world!!";
       });
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Success: Saved high-res relit image to $savePath"),
@@ -513,6 +530,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         _isLoading = false;
         _statusMessage = "Save failed: $e";
       });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error saving image: $e"),
@@ -585,16 +603,16 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
 
       // Transition structured byte lists into accelerated GPU Texture handles
       setState(() => _statusMessage = "Uploading textures to GPU...");
-      final List<ui.Image> GPUHandles = await Future.wait([
+      final List<ui.Image> gpuHandles = await Future.wait([
         ImageProcessingService.createUiImageFromBytes(texturePack['albedo']!),
         ImageProcessingService.createUiImageFromBytes(texturePack['original']!),
         ImageProcessingService.createUiImageFromBytes(texturePack['depth']!),
       ]);
 
       setState(() {
-        _albedoTex   = GPUHandles[0];
-        _originalTex = GPUHandles[1];
-        _depthTex    = GPUHandles[2];
+        _albedoTex   = gpuHandles[0];
+        _originalTex = gpuHandles[1];
+        _depthTex    = gpuHandles[2];
         _isLoading   = false;
       });
     } catch (e) {
@@ -702,36 +720,45 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 16.0),
+              padding: EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 16.0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.blur_on,
-                    size: 64,
-                    color: Colors.blueAccent,
+                  Center(
+                    child: Icon(
+                      Icons.blur_on,
+                      size: 64,
+                      color: Colors.blueAccent,
+                    ),
                   ),
+
                   const SizedBox(height: 12),
-                  const Text(
-                    "🌟 Relight",
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                      color: Colors.white,
+
+                  const Center(
+                    child: Text(
+                      "🌟 Relight",
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
+
                   const SizedBox(height: 6),
-                  Text(
-                    "Ready to Imagine a new world!!",
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.white60,
+
+                  const Center(
+                    child: Text(
+                      "Ready to Imagine a new world!!",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white60,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
                   ),
+
                   const SizedBox(height: 20),
                 ],
               ),

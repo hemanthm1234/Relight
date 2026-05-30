@@ -1,15 +1,15 @@
-/// ============================================================================
-/// File: lib/models/lighting_state.dart
-/// Purpose: Manages the reactive global state for the 3D Relighting application.
-/// 
-/// Responsibility:
-/// - Represents individual light sources via the `LightSource` class (holding position, color, intensity).
-/// - Inherits from `ChangeNotifier` to act as the primary state container (`LightingState`).
-/// - Tracks active workspace settings: the current active bottom navigation tab, the selected view/buffer mode 
-///   (Lit, Original, Albedo, Depth, Normal), and active light source selections (supporting up to 4 lights).
-/// - Encapsulates modification handlers for adding, removing, and adjusting properties of light sources
-///   (position, intensity, color) and global PBR parameters (roughness, metallic, shadow softness, ambient intensity).
-/// ============================================================================
+// ============================================================================
+// File: lib/models/lighting_state.dart
+// Purpose: Manages the reactive global state for the 3D Relighting application.
+// 
+// Responsibility:
+// - Represents individual light sources via the `LightSource` class (holding position, color, intensity).
+// - Inherits from `ChangeNotifier` to act as the primary state container (`LightingState`).
+// - Tracks view modes (Lit, Original, Albedo, Depth, Normal) and active light source selections (up to 4 lights).
+// - Manages camera projection parameters (FOV, Z-min/max ratios) for the true 3D perspective frustum.
+// - Encapsulates modification handlers for adding, removing, and adjusting properties of light sources
+//   (position, intensity, color) and global PBR parameters (roughness, metallic, shadow softness, ambient intensity).
+// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
@@ -27,36 +27,32 @@ class LightSource {
 }
 
 class LightingState extends ChangeNotifier {
-  // View Modes: 0=Lit, 1=Original, 2=Albedo, 3=Depth, 4=Normal
-  int viewMode = 1; // Default to Original (used by Maps tab)
+  int viewMode = 1; 
   bool isLightingEnabled = false;
-
-  // Active bottom nav tab: 0=Maps, 1=Lights, 2=Controls
-  int activeTab = 1;
 
   List<LightSource> lights = [];
   int selectedLightIndex = -1;
 
+  // Material & Lighting parameters
   double roughness = 0.4;
   double metallic = 0.1;
   double shadowSoftness = 0.5;
   Color ambientColor = const Color(0xFF1A1A1A);
 
-  double get ambientIntensity => ambientColor.red / 255.0;
+  // Photorealism Tuning Parameters
+  double microDetailStrength = 0.0; // 0.0 = smooth (portraits), up to 5.0 for textured surfaces
+  double lightRadius = 1500.0;      // UE4-style physical light attenuation bounds
 
-  /// Compute the effective view mode based on the active tab.
-  /// Maps tab: use user-selected viewMode (Original/Albedo/Depth/Normal)
-  /// Lights/Controls tabs: show Lit (0) if lighting enabled, Original (1) if not
+  // Camera Projection Parameters
+  double fov = 60.0; // In degrees (30.0 to 150.0)
+  double zMinRatio = 0.1;
+  double zMaxRatio = 1.5;
+
+  double get ambientIntensity => ambientColor.r;
+
   int get effectiveViewMode {
-    if (viewMode == 1) {
-      return isLightingEnabled ? 0 : 1;
-    }
+    if (isLightingEnabled && viewMode == 1) return 0;
     return viewMode;
-  }
-
-  void setActiveTab(int tab) {
-    activeTab = tab;
-    notifyListeners();
   }
 
   void setViewMode(int mode) {
@@ -66,22 +62,19 @@ class LightingState extends ChangeNotifier {
 
   void toggleLighting(bool enabled) {
     isLightingEnabled = enabled;
-    // Don't change viewMode — the effectiveViewMode getter handles this
     notifyListeners();
   }
 
   void addLight() {
     if (lights.length < 4) {
+      // Spawn light at the exact center of the screen (0,0) and slightly in front of the image plane (-150.0)
       lights.add(LightSource(
-        pos: Vector3(150.0, 150.0, 600.0),
+        pos: Vector3(0.0, 0.0, 0.5), // Normalized depth range (0.0 to 1.0)
         color: Colors.white,
-        intensity: 1500.0,
+        intensity: 250000.0, // Perspective lights need higher intensity due to true inverse-square falloff
       ));
       selectedLightIndex = lights.length - 1;
-      // Auto-enable lighting if not enabled
-      if (!isLightingEnabled) {
-        isLightingEnabled = true;
-      }
+      if (!isLightingEnabled) isLightingEnabled = true;
       notifyListeners();
     }
   }
@@ -90,9 +83,7 @@ class LightingState extends ChangeNotifier {
     if (selectedLightIndex >= 0 && selectedLightIndex < lights.length) {
       lights.removeAt(selectedLightIndex);
       selectedLightIndex = lights.isEmpty ? -1 : 0;
-      if (lights.isEmpty) {
-        isLightingEnabled = false;
-      }
+      if (lights.isEmpty) isLightingEnabled = false;
       notifyListeners();
     }
   }
@@ -126,10 +117,20 @@ class LightingState extends ChangeNotifier {
     double? newMetallic,
     double? newShadowSoftness,
     double? newAmbientIntensity,
+    double? newFov,
+    double? newZMin,
+    double? newZMax,
+    double? newMicroDetail,
+    double? newLightRadius,
   }) {
     if (newRoughness != null) roughness = newRoughness;
     if (newMetallic != null) metallic = newMetallic;
     if (newShadowSoftness != null) shadowSoftness = newShadowSoftness;
+    if (newFov != null) fov = newFov;
+    if (newZMin != null) zMinRatio = newZMin;
+    if (newZMax != null) zMaxRatio = newZMax;
+    if (newMicroDetail != null) microDetailStrength = newMicroDetail;
+    if (newLightRadius != null) lightRadius = newLightRadius;
     if (newAmbientIntensity != null) {
       int v = (newAmbientIntensity * 255).clamp(0, 255).toInt();
       ambientColor = Color.fromARGB(255, v, v, v);

@@ -1,14 +1,17 @@
-/// ============================================================================
-/// File: lib/widgets/relight_canvas.dart
-/// Purpose: Interactive rendering canvas and gesture coordinate hub.
-/// 
-/// Responsibility:
-/// - Computes aspect-ratio-aware bounding constraints (`BoxFit.contain`) for the workspace image.
-/// - Tracks touch and dragging pan gestures to dynamically translate screen-space coordinates into image-relative light source coordinates.
-/// - Houses `PBRShaderPainter`, a `CustomPainter` that binds GPU textures (Albedo, Original, Depth) and forwards PBR/lighting uniform vectors directly to the custom fragment shader.
-/// - Draws high-fidelity, interactive vector indicators (color-coded center dots and intensity rings proportional to depth/strength) representing individual light sources.
-/// ============================================================================
+// ============================================================================
+// File: lib/widgets/relight_canvas.dart
+// Purpose: Interactive rendering canvas and gesture coordinate hub.
+//
+// Responsibility:
+// - Computes aspect-ratio-aware bounding constraints for the workspace image.
+// - Translates touch/pan gestures into origin-centered world coordinates
+//   matching the shader's `(uv - 0.5) * u_DrawSize` math.
+// - Houses `PBRShaderPainter` which binds GPU textures and forwards all
+//   PBR/lighting/camera uniform vectors to the fragment shader.
+// - Draws interactive light indicators with depth/intensity proportional sizing.
+// ============================================================================
 
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -33,7 +36,6 @@ class RelightCanvas extends StatefulWidget {
 }
 
 class _RelightCanvasState extends State<RelightCanvas> {
-  /// Compute the fitted image rect (BoxFit.contain) within the given canvas size.
   Rect _computeFittedRect(Size canvasSize) {
     final double imageW = widget.originalTexture.width.toDouble();
     final double imageH = widget.originalTexture.height.toDouble();
@@ -43,13 +45,11 @@ class _RelightCanvasState extends State<RelightCanvas> {
     double drawW, drawH, offsetX, offsetY;
 
     if (canvasAspect > imageAspect) {
-      // Canvas is wider than image — pillarbox (bars on left/right)
       drawH = canvasSize.height;
       drawW = drawH * imageAspect;
       offsetX = (canvasSize.width - drawW) / 2.0;
       offsetY = 0.0;
     } else {
-      // Canvas is taller than image — letterbox (bars on top/bottom)
       drawW = canvasSize.width;
       drawH = drawW / imageAspect;
       offsetX = 0.0;
@@ -57,6 +57,25 @@ class _RelightCanvasState extends State<RelightCanvas> {
     }
 
     return Rect.fromLTWH(offsetX, offsetY, drawW, drawH);
+  }
+
+  void _handleTouch(Offset localPosition, LightingState state, Size canvasSize) {
+    if (!state.isLightingEnabled || state.selectedLightIndex < 0) return;
+
+    double scaleX = canvasSize.width / widget.originalTexture.width;
+    double scaleY = canvasSize.height / widget.originalTexture.height;
+    double scale = math.min(scaleX, scaleY);
+
+    double drawWidth = widget.originalTexture.width * scale;
+    double drawHeight = widget.originalTexture.height * scale;
+    double offsetX = (canvasSize.width - drawWidth) / 2.0;
+    double offsetY = (canvasSize.height - drawHeight) / 2.0;
+
+    // Shift origin to center of the image, matching shader math
+    double mappedX = localPosition.dx - (offsetX + drawWidth / 2.0);
+    double mappedY = localPosition.dy - (offsetY + drawHeight / 2.0);
+
+    state.updateSelectedLightPos(mappedX, mappedY);
   }
 
   @override
@@ -70,19 +89,10 @@ class _RelightCanvasState extends State<RelightCanvas> {
 
         return GestureDetector(
           onPanUpdate: (details) {
-            if (lightingState.isLightingEnabled && lightingState.selectedLightIndex >= 0) {
-              // Convert screen tap to draw-rect-relative coordinates
-              final double relX = (details.localPosition.dx - drawRect.left).clamp(0.0, drawRect.width);
-              final double relY = (details.localPosition.dy - drawRect.top).clamp(0.0, drawRect.height);
-              lightingState.updateSelectedLightPos(relX, relY);
-            }
+            _handleTouch(details.localPosition, lightingState, canvasSize);
           },
           onTapDown: (details) {
-            if (lightingState.isLightingEnabled && lightingState.selectedLightIndex >= 0) {
-              final double relX = (details.localPosition.dx - drawRect.left).clamp(0.0, drawRect.width);
-              final double relY = (details.localPosition.dy - drawRect.top).clamp(0.0, drawRect.height);
-              lightingState.updateSelectedLightPos(relX, relY);
-            }
+            _handleTouch(details.localPosition, lightingState, canvasSize);
           },
           child: CustomPaint(
             size: canvasSize,
@@ -108,7 +118,6 @@ class PBRShaderPainter extends CustomPainter {
   final ui.Image depth;
   final LightingState state;
   final Rect drawRect;
-  final double scale;
   final bool showIndicators;
 
   PBRShaderPainter({
@@ -118,13 +127,11 @@ class PBRShaderPainter extends CustomPainter {
     required this.depth,
     required this.state,
     required this.drawRect,
-    this.scale = 1.0,
     this.showIndicators = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Set image samplers
     shader.setImageSampler(0, albedo);
     shader.setImageSampler(1, original);
     shader.setImageSampler(2, depth);
@@ -135,45 +142,38 @@ class PBRShaderPainter extends CustomPainter {
 
     int fi = 0;
 
-    // View Mode (0)
-    shader.setFloat(fi++, effectiveMode.toDouble()); 
+    shader.setFloat(fi++, effectiveMode.toDouble());
+    shader.setFloat(fi++, size.width);
+    shader.setFloat(fi++, size.height);
+    shader.setFloat(fi++, drawRect.left);
+    shader.setFloat(fi++, drawRect.top);
+    shader.setFloat(fi++, drawRect.width);
+    shader.setFloat(fi++, drawRect.height);
+    shader.setFloat(fi++, imgW);
+    shader.setFloat(fi++, imgH);
+    shader.setFloat(fi++, state.roughness);
+    shader.setFloat(fi++, state.metallic);
+    shader.setFloat(fi++, state.ambientColor.r);
+    shader.setFloat(fi++, state.ambientColor.g);
+    shader.setFloat(fi++, state.ambientColor.b);
+    shader.setFloat(fi++, state.shadowSoftness);
 
-    // Canvas Resolution (1, 2)
-    shader.setFloat(fi++, size.width);    
-    shader.setFloat(fi++, size.height);   
-
-    // Calculated BoxFit.contain offset (3, 4)
-    shader.setFloat(fi++, drawRect.left);   
-    shader.setFloat(fi++, drawRect.top);    
-
-    // Calculated BoxFit.contain size (5, 6)
-    shader.setFloat(fi++, drawRect.width);  
-    shader.setFloat(fi++, drawRect.height); 
-
-    // Raw Image Size (7, 8)
-    shader.setFloat(fi++, imgW);  
-    shader.setFloat(fi++, imgH);  
-
-    // Global Params (9, 10, 11, 12, 13, 14)
-    shader.setFloat(fi++, state.roughness); 
-    shader.setFloat(fi++, state.metallic);  
-    shader.setFloat(fi++, state.ambientColor.r); 
-    shader.setFloat(fi++, state.ambientColor.g); 
-    shader.setFloat(fi++, state.ambientColor.b); 
-    shader.setFloat(fi++, state.shadowSoftness); 
-
-    // Lights (15)
     int numLights = state.lights.length.clamp(0, 4);
-    shader.setFloat(fi++, numLights.toDouble()); 
-    
-    // Scale Factor (16)
-    shader.setFloat(fi++, scale);
+    shader.setFloat(fi++, numLights.toDouble());
+
+    // --- PHOTOREALISM TUNING UNIFORMS ---
+    shader.setFloat(fi++, state.microDetailStrength);
+    shader.setFloat(fi++, state.lightRadius);
+
+    // --- CAMERA UNIFORMS ---
+    shader.setFloat(fi++, state.fov * math.pi / 180.0);
+    shader.setFloat(fi++, state.zMinRatio);
+    shader.setFloat(fi++, state.zMaxRatio);
+    // ---------------------------
 
     for (int i = 0; i < 4; i++) {
       if (i < numLights) {
         final light = state.lights[i];
-        
-        // Feed raw relative coords (matches localCoord in shader)
         shader.setFloat(fi++, light.pos.x);
         shader.setFloat(fi++, light.pos.y);
         shader.setFloat(fi++, light.pos.z);
@@ -182,7 +182,7 @@ class PBRShaderPainter extends CustomPainter {
         shader.setFloat(fi++, light.color.b);
         shader.setFloat(fi++, light.intensity);
       } else {
-        for(int p = 0; p < 7; p++) {
+        for (int p = 0; p < 7; p++) {
           shader.setFloat(fi++, 0.0);
         }
       }
@@ -197,41 +197,37 @@ class PBRShaderPainter extends CustomPainter {
   }
 
   void _drawLightIndicators(Canvas canvas) {
-    const double maxZ = 2400.0;
     const double minDotRadius = 4.0;
     const double maxDotRadius = 14.0;
     const double minCircleRadius = 18.0;
     const double maxCircleRadius = 80.0;
-    const double maxIntensity = 10000.0;
-    const double minIntensity = 50.0;
+    const double maxIntensity = 500000.0;
+    const double minIntensity = 1000.0;
 
     for (int i = 0; i < state.lights.length; i++) {
       final light = state.lights[i];
       final bool isSelected = (i == state.selectedLightIndex);
 
-      // Convert draw-rect-relative coords to screen coords for drawing
-      final double screenX = light.pos.x + drawRect.left;
-      final double screenY = light.pos.y + drawRect.top;
+      // World (0,0) = center of the draw rect
+      final double screenX = light.pos.x + drawRect.left + drawRect.width / 2.0;
+      final double screenY = light.pos.y + drawRect.top + drawRect.height / 2.0;
       final Offset center = Offset(screenX, screenY);
 
-      // Center dot: radius proportional to height (Z) so that closer to camera = bigger
-      final double heightNorm = (light.pos.z / maxZ).clamp(0.0, 1.0);
+      // Normalized Z: 0.0 is front (bigger dot), 1.0 is back (smaller dot)
+      final double heightNorm = (1.0 - light.pos.z).clamp(0.0, 1.0);
       final double dotRadius = minDotRadius + (maxDotRadius - minDotRadius) * heightNorm;
 
-      // Outer circle: radius proportional to intensity
       final double intensityNorm = ((light.intensity - minIntensity) / (maxIntensity - minIntensity)).clamp(0.0, 1.0);
       final double circleRadius = minCircleRadius + (maxCircleRadius - minCircleRadius) * intensityNorm;
 
       final Color lightColor = light.color;
 
-      // Draw outer circle (intensity indicator)
       final Paint circlePaint = Paint()
         ..color = lightColor.withAlpha(isSelected ? 180 : 100)
         ..style = PaintingStyle.stroke
         ..strokeWidth = isSelected ? 3.0 : 2.0;
       canvas.drawCircle(center, circleRadius, circlePaint);
 
-      // Draw subtle filled glow inside circle for selected light
       if (isSelected) {
         final Paint glowPaint = Paint()
           ..color = lightColor.withAlpha(30)
@@ -239,13 +235,11 @@ class PBRShaderPainter extends CustomPainter {
         canvas.drawCircle(center, circleRadius, glowPaint);
       }
 
-      // Draw center dot (filled)
       final Paint dotPaint = Paint()
         ..color = lightColor
         ..style = PaintingStyle.fill;
       canvas.drawCircle(center, dotRadius, dotPaint);
 
-      // Draw border around the dot for contrast
       final Paint dotBorderPaint = Paint()
         ..color = isSelected ? Colors.white : Colors.white54
         ..style = PaintingStyle.stroke
