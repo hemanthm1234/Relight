@@ -1,3 +1,14 @@
+// =============================================================================
+// File: assets/shaders/pbr_relight.frag
+// Purpose: PBR Relighting & multi-mode visualization fragment shader.
+// 
+// Responsibility:
+// - Implements physically-based rendering (PBR) equations on the GPU, evaluating up to 4 dynamic light sources with real-time soft shadow casting.
+// - Integrates custom 3x3 Sobel filtering over the depth texture combined with albedo roughness to reconstruct high-frequency surface normal vectors on the fly.
+// - Renders five distinct visual modes: Lit scene (PBR shading), Original texture, Albedo map, Depth buffer, and Normal vectors.
+// - Executes soft shadow raymarching based on depth boundaries, Cook-Torrance BRDF microfacet lighting (with GGX/Schlick equations), and ACES tonemapping/gamma correction.
+// =============================================================================
+
 #version 460 core
 #include <flutter/runtime_effect.glsl>
 

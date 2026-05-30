@@ -1,3 +1,14 @@
+/// ============================================================================
+/// File: lib/widgets/relight_canvas.dart
+/// Purpose: Interactive rendering canvas and gesture coordinate hub.
+/// 
+/// Responsibility:
+/// - Computes aspect-ratio-aware bounding constraints (`BoxFit.contain`) for the workspace image.
+/// - Tracks touch and dragging pan gestures to dynamically translate screen-space coordinates into image-relative light source coordinates.
+/// - Houses `PBRShaderPainter`, a `CustomPainter` that binds GPU textures (Albedo, Original, Depth) and forwards PBR/lighting uniform vectors directly to the custom fragment shader.
+/// - Draws high-fidelity, interactive vector indicators (color-coded center dots and intensity rings proportional to depth/strength) representing individual light sources.
+/// ============================================================================
+
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

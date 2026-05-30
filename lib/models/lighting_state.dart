@@ -1,3 +1,16 @@
+/// ============================================================================
+/// File: lib/models/lighting_state.dart
+/// Purpose: Manages the reactive global state for the 3D Relighting application.
+/// 
+/// Responsibility:
+/// - Represents individual light sources via the `LightSource` class (holding position, color, intensity).
+/// - Inherits from `ChangeNotifier` to act as the primary state container (`LightingState`).
+/// - Tracks active workspace settings: the current active bottom navigation tab, the selected view/buffer mode 
+///   (Lit, Original, Albedo, Depth, Normal), and active light source selections (supporting up to 4 lights).
+/// - Encapsulates modification handlers for adding, removing, and adjusting properties of light sources
+///   (position, intensity, color) and global PBR parameters (roughness, metallic, shadow softness, ambient intensity).
+/// ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 

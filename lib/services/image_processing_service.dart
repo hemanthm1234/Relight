@@ -1,3 +1,16 @@
+/// ============================================================================
+/// File: lib/services/image_processing_service.dart
+/// Purpose: Handles heavy CPU-bound image manipulation and intrinsic decomposition.
+/// 
+/// Responsibility:
+/// - Transforms raw byte arrays into platform-optimized Flutter `ui.Image` GPU texture handles.
+/// - Performs Intrinsic Image Decomposition via a bilateral edge-preservation filter approximation on a background thread (Isolate).
+/// - Decouples target images into three components:
+///   1. Albedo Map: Extracted by dividing luminance intensity by low-frequency shading approximations.
+///   2. Depth Map: Up-sampled and mapped symmetrically from the raw ML output matrix back to the target's original resolution.
+///   3. Original Scene: Retained as the source template for high-fidelity rendering.
+/// ============================================================================
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';

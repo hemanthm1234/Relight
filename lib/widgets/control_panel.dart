@@ -1,3 +1,15 @@
+/// ============================================================================
+/// File: lib/widgets/control_panel.dart
+/// Purpose: Workspace configuration panel drawer.
+/// 
+/// Responsibility:
+/// - Renders a collapsible bottom drawer displaying fine-tuning controls.
+/// - Manages two primary parameter tabs:
+///   1. Lights: Instantiates individual light sources, tracks selections, and exposes controls for depth (Z position), color hues, and intensity.
+///   2. Controls: Hosts PBR sliders to fine-tune global ambient intensity, surface roughness, metallic reflectivity, and shadow softness.
+/// - Automatically minimizes/expands with intuitive gesture swipes or double-taps on navigation items.
+/// ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/lighting_state.dart';

@@ -1,3 +1,17 @@
+/// ============================================================================
+/// File: lib/widgets/map_selector.dart
+/// Purpose: Multi-map buffer view selection widget.
+/// 
+/// Responsibility:
+/// - Displays a modern, floating toggle bar at the top of the active workspace.
+/// - Allows the user to select between four primary preview channels:
+///   1. Original: The unmodified target image.
+///   2. Albedo: The reflection map isolated from shading.
+///   3. Depth: The monocular depth estimation map.
+///   4. Normal: The surface orientation/bump normal vector map.
+/// - Dispatches visual view mode updates to the unified `LightingState` listener.
+/// ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

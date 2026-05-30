@@ -1,3 +1,14 @@
+/// ============================================================================
+/// File: lib/main.dart
+/// Purpose: Main entry point and orchestration layer of the 3D Relighting app.
+/// 
+/// Responsibility:
+/// - Boots the Flutter application, restricts orientation, and hooks up the global `LightingState` notifier.
+/// - Builds the workspace interface (`RelighterWorkspace`), which coordinates asset pipelines for pre-baked caches (kUseCachedSample) or real-time ML-driven inference.
+/// - Integrates the model selection interface for choosing depth estimators (Depth-Anything-V2/V3) and exports compiled texture maps for workspace caches.
+/// - Coordinates high-resolution image baking, coordinate scaling, and secure export/download dialogs via the local file system.
+/// ============================================================================
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
