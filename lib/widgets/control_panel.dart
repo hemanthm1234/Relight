@@ -230,6 +230,12 @@ class _ControlPanelState extends State<ControlPanel> {
               min: 0.0, max: 1.0,
               onChanged: (v) => state.updateSelectedLightPos(activeLight.pos.x, activeLight.pos.y, z: v),
             ),
+            _buildSlider(
+              label: "Light Falloff (Decay)",
+              value: activeLight.attenuationDecay ?? 2.0,
+              min: 0.1, max: 3.0,
+              onChanged: (v) => state.updateSelectedLight(attenuationDecay: v),
+            ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

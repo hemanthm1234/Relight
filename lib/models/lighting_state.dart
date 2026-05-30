@@ -18,11 +18,13 @@ class LightSource {
   Vector3 pos;
   Color color;
   double intensity;
+  double? attenuationDecay;
 
   LightSource({
     required this.pos,
     required this.color,
     required this.intensity,
+    this.attenuationDecay = 2.0,
   });
 }
 
@@ -104,10 +106,11 @@ class LightingState extends ChangeNotifier {
     }
   }
 
-  void updateSelectedLight({Color? color, double? intensity}) {
+  void updateSelectedLight({Color? color, double? intensity, double? attenuationDecay}) {
     if (selectedLightIndex >= 0) {
       if (color != null) lights[selectedLightIndex].color = color;
       if (intensity != null) lights[selectedLightIndex].intensity = intensity;
+      if (attenuationDecay != null) lights[selectedLightIndex].attenuationDecay = attenuationDecay;
       notifyListeners();
     }
   }

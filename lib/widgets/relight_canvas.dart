@@ -181,8 +181,9 @@ class PBRShaderPainter extends CustomPainter {
         shader.setFloat(fi++, light.color.g);
         shader.setFloat(fi++, light.color.b);
         shader.setFloat(fi++, light.intensity);
+        shader.setFloat(fi++, light.attenuationDecay ?? 2.0);
       } else {
-        for (int p = 0; p < 7; p++) {
+        for (int p = 0; p < 8; p++) {
           shader.setFloat(fi++, 0.0);
         }
       }

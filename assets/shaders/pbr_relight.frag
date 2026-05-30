@@ -30,10 +30,10 @@ uniform float u_ZminRatio;
 uniform float u_ZmaxRatio;
 
 // Light Structs
-uniform vec3 u_LightPos_0; uniform vec3 u_LightColor_0; uniform float u_LightIntensity_0;
-uniform vec3 u_LightPos_1; uniform vec3 u_LightColor_1; uniform float u_LightIntensity_1;
-uniform vec3 u_LightPos_2; uniform vec3 u_LightColor_2; uniform float u_LightIntensity_2;
-uniform vec3 u_LightPos_3; uniform vec3 u_LightColor_3; uniform float u_LightIntensity_3;
+uniform vec3 u_LightPos_0; uniform vec3 u_LightColor_0; uniform float u_LightIntensity_0; uniform float u_LightDecay_0;
+uniform vec3 u_LightPos_1; uniform vec3 u_LightColor_1; uniform float u_LightIntensity_1; uniform float u_LightDecay_1;
+uniform vec3 u_LightPos_2; uniform vec3 u_LightColor_2; uniform float u_LightIntensity_2; uniform float u_LightDecay_2;
+uniform vec3 u_LightPos_3; uniform vec3 u_LightColor_3; uniform float u_LightIntensity_3; uniform float u_LightDecay_3;
 
 out vec4 fragColor;
 
@@ -152,20 +152,25 @@ vec3 getNormal(vec2 uv) {
 // ---------------------------------------------------------
 // TRUE 3D SHADOW RAYMARCHING
 // ---------------------------------------------------------
-float calculateShadow(vec3 surfacePos, vec3 l_pos) {
+float calculateShadow(vec3 surfacePos, vec3 l_pos, vec3 n) {
     if (l_pos.z > surfacePos.z) return 0.0;
     
     vec3 l = normalize(l_pos - surfacePos);
     float shadowAccum = 0.0;
     int maxSteps = 32;
-    vec3 rayStep = l * (length(l_pos - surfacePos) / float(maxSteps));
-    vec3 currentRayPos = surfacePos + l * 2.0; 
     
+    // --- FIX 1: THE SHADOW BIAS ---
+    // Push the starting position out along the Normal vector slightly.
+    // This prevents the ray from instantly colliding with its own microscopic surface geometry.
+    float bias = 5.0; 
+    vec3 currentRayPos = surfacePos + (n * bias) + (l * bias); 
+    
+    vec3 rayStep = l * (length(l_pos - currentRayPos) / float(maxSteps));
     float zc = getZc();
 
     for(int i = 0; i < maxSteps; i++) {
         float projFactor = 1.0 + currentRayPos.z / zc;
-        if (projFactor <= 0.0) break;
+        if (projFactor <= 0.0) break; 
         
         vec2 imgCoord = currentRayPos.xy / projFactor;
         vec2 sampleUV = (imgCoord / u_DrawSize) + 0.5;
@@ -173,43 +178,49 @@ float calculateShadow(vec3 surfacePos, vec3 l_pos) {
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) break;
         
         float geomZ = getZ(sampleUV);
-        float depthDiff = geomZ - currentRayPos.z;
-        if (depthDiff > 1.0 && depthDiff < u_ShadowSoftness * 100.0) {
-            shadowAccum += 1.0 - smoothstep(0.0, u_ShadowSoftness * 50.0, depthDiff);
+        
+        // --- FIX 1: CORRECTED OCCLUSION MATH ---
+        // If currentRayPos.z is larger than geomZ, the ray is BEHIND the surface.
+        float distToOccluder = currentRayPos.z - geomZ;
+        
+        if (distToOccluder > bias) {
+            // Hard Hit: Ray is physically behind an object
+            shadowAccum += 1.0;
+        } else if (distToOccluder > -u_ShadowSoftness * 50.0) {
+            // Penumbra: Ray passed very closely in front of an object, generating a soft shadow edge
+            shadowAccum += smoothstep(-u_ShadowSoftness * 50.0, bias, distToOccluder);
         }
         currentRayPos += rayStep;
     }
-    return clamp(1.0 - (shadowAccum / float(maxSteps)) * 5.0, 0.0, 1.0);
+    return clamp(1.0 - (shadowAccum / float(maxSteps)) * 4.0, 0.0, 1.0);
 }
 
 // ---------------------------------------------------------
 // PBR MASTER EQUATION EVALUATION
 // ---------------------------------------------------------
-vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, vec3 surfacePos, vec3 n, vec3 v, vec3 albedo, float metallic, float roughness) {
+vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, float l_decay, vec3 surfacePos, vec3 n, vec3 v, vec3 albedo, float metallic, float roughness) {
     if (index >= int(u_ActiveLights)) return vec3(0.0);
-    if (l_pos.z > surfacePos.z) return vec3(0.0); // Backface kill
+    if (l_pos.z > surfacePos.z) return vec3(0.0); 
     
     vec3 l = normalize(l_pos - surfacePos);
     vec3 h = normalize(l + v);
     
-    float V_shadow = calculateShadow(surfacePos, l_pos);
+    // Pass the normal to the shadow function for biasing
+    float V_shadow = calculateShadow(surfacePos, l_pos, n);
     
     float NdotL = max(dot(n, l), 0.0);
     float NdotV = max(dot(n, v), 0.0001);
     float NdotH = max(dot(n, h), 0.0);
     float VdotH = max(dot(v, h), 0.0);
     
-    // 1. Fresnel (Schlick)
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
     vec3 F = F0 + (1.0 - F0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);
     
-    // 2. Normal Distribution (GGX)
-    float alpha = roughness * roughness;
+    float alpha = max(roughness * roughness, 0.01); // Prevent pure 0.0 roughness explosions
     float alpha2 = alpha * alpha;
     float denomD = (NdotH * NdotH * (alpha2 - 1.0) + 1.0);
     float D = alpha2 / (3.1415926535 * denomD * denomD);
     
-    // 3. Geometry (Smith)
     float k = ((roughness + 1.0) * (roughness + 1.0)) / 8.0;
     float gl = NdotL / (NdotL * (1.0 - k) + k);
     float gv = NdotV / (NdotV * (1.0 - k) + k);
@@ -217,18 +228,19 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, vec3 s
     
     vec3 kd = (vec3(1.0) - F) * (1.0 - metallic);
     vec3 diffuse = kd * (albedo / 3.1415926535) * NdotL;
-    vec3 specular = (D * G * F) / (4.0 * NdotV + 0.0001);
     
-    // FIX #2: UE4 Windowed Inverse-Square Falloff
-    // Instead of raw 1/(d^2+1) which explodes when d->0,
-    // we physically bound the light to u_LightRadius. The numerator
-    // smoothly fades to zero at the boundary, preventing blown-out hotspots.
+    // --- FIX 3: SPECULAR CAPPING ---
+    // Mathematically clamp the raw specular intensity so it doesn't break the physics limits
+    vec3 specular = (D * G * F) / (4.0 * NdotV + 0.0001);
+    specular = min(specular, vec3(10.0)); // Prevent infinite spikes
+    
+    // --- NEW: USER CONTROLLED ATTENUATION DECAY ---
     float dist = length(l_pos - surfacePos);
-    float r2 = u_LightRadius * u_LightRadius;
-    float d2 = dist * dist;
-    float distRatio = d2 / r2;
-    float windowedFalloff = pow(max(1.0 - distRatio * distRatio, 0.0), 2.0);
-    float attenuation = windowedFalloff / (d2 + 1.0);
+    float distanceFalloff = pow(max(1.0 - pow((dist * dist) / (u_LightRadius * u_LightRadius), 2.0), 0.0), 2.0);
+    
+    // l_decay replaces the hardcoded square law. 
+    // 2.0 = Realistic Inverse Square. 1.0 = Linear (Reaches far). 0.5 = Massive Reach.
+    float attenuation = distanceFalloff / (pow(dist, l_decay) + 1.0);
     
     vec3 radiance = l_color * l_intensity * attenuation;
     
@@ -281,16 +293,24 @@ void main() {
     vec3 lPos2 = u_LightPos_2; lPos2.z = zMin + lPos2.z * (zMax - zMin);
     vec3 lPos3 = u_LightPos_3; lPos3.z = zMin + lPos3.z * (zMax - zMin);
     
-    pointLighting += computeLight(0, lPos0, u_LightColor_0, u_LightIntensity_0, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(1, lPos1, u_LightColor_1, u_LightIntensity_1, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(2, lPos2, u_LightColor_2, u_LightIntensity_2, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(3, lPos3, u_LightColor_3, u_LightIntensity_3, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
+    pointLighting += computeLight(0, lPos0, u_LightColor_0, u_LightIntensity_0, u_LightDecay_0, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
+    pointLighting += computeLight(1, lPos1, u_LightColor_1, u_LightIntensity_1, u_LightDecay_1, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
+    pointLighting += computeLight(2, lPos2, u_LightColor_2, u_LightIntensity_2, u_LightDecay_2, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
+    pointLighting += computeLight(3, lPos3, u_LightColor_3, u_LightIntensity_3, u_LightDecay_3, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
 
     vec3 C_linear = ambientLighting + pointLighting;
 
-    // ACES Filmic Tonemapping
+    // --- FIX 2: MAX-CHANNEL TONEMAPPING (Color Preservation) ---
+    // Instead of using luminance (which crushes saturated colors to white),
+    // we apply the ACES curve to the absolute brightest color channel.
+    float maxC = max(max(C_linear.r, C_linear.g), C_linear.b);
+    
     float a = 2.51; float b = 0.03; float c = 2.43; float d = 0.59; float e = 0.14;
-    vec3 toneMappedColor = clamp((C_linear * (a * C_linear + b)) / (C_linear * (c * C_linear + d) + e), 0.0, 1.0);
+    float mappedMax = clamp((maxC * (a * maxC + b)) / (maxC * (c * maxC + d) + e), 0.0, 1.0);
+    
+    // Scale all channels proportionally to the mapped max channel
+    vec3 toneMappedColor = C_linear * (mappedMax / max(maxC, 0.0001));
 
-    fragColor = vec4(pow(toneMappedColor, vec3(1.0 / 2.2)), 1.0);
+    // Final Gamma Correction (1.0 / 2.2)
+    fragColor = vec4(pow(toneMappedColor, vec3(0.4545)), 1.0);
 }
