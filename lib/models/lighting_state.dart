@@ -36,14 +36,14 @@ class LightingState extends ChangeNotifier {
   int selectedLightIndex = -1;
 
   // Material & Lighting parameters
-  double roughness = 0.4;
+  double roughness = 0.2;
   double metallic = 0.1;
   double shadowSoftness = 0.5;
   Color ambientColor = const Color(0xFF1A1A1A);
 
   // Photorealism Tuning Parameters
   double microDetailStrength = 0.0; // 0.0 = smooth (portraits), up to 5.0 for textured surfaces
-  double lightRadius = 1500.0;      // UE4-style physical light attenuation bounds
+  double albedoBlend = 0.4;         // Controls De-Lighting Strength
 
   // Camera Projection Parameters
   double fov = 60.0; // In degrees (30.0 to 150.0)
@@ -124,7 +124,7 @@ class LightingState extends ChangeNotifier {
     double? newZMin,
     double? newZMax,
     double? newMicroDetail,
-    double? newLightRadius,
+    double? newAlbedoBlend,
   }) {
     if (newRoughness != null) roughness = newRoughness;
     if (newMetallic != null) metallic = newMetallic;
@@ -133,7 +133,7 @@ class LightingState extends ChangeNotifier {
     if (newZMin != null) zMinRatio = newZMin;
     if (newZMax != null) zMaxRatio = newZMax;
     if (newMicroDetail != null) microDetailStrength = newMicroDetail;
-    if (newLightRadius != null) lightRadius = newLightRadius;
+    if (newAlbedoBlend != null) albedoBlend = newAlbedoBlend;
     if (newAmbientIntensity != null) {
       int v = (newAmbientIntensity * 255).clamp(0, 255).toInt();
       ambientColor = Color.fromARGB(255, v, v, v);

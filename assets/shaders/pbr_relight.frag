@@ -22,7 +22,7 @@ uniform float u_ActiveLights;
 
 // Photorealism Tuning Parameters
 uniform float u_MicroDetailStrength; // Controls luminance-driven micro-normal perturbation
-uniform float u_LightRadius;         // UE4-style physical light attenuation bounds
+uniform float u_AlbedoBlend;         // Controls De-Lighting Strength
 
 // Camera & Projection Uniforms
 uniform float u_FOV;
@@ -213,34 +213,43 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, float 
     float NdotH = max(dot(n, h), 0.0);
     float VdotH = max(dot(v, h), 0.0);
     
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    // --- NEW: USER CONTROLLED ATTENUATION DECAY ---
+    float dist = length(l_pos - surfacePos);
+    // l_decay replaces the hardcoded square law. 
+    // 2.0 = Realistic Inverse Square. 1.0 = Linear (Reaches far). 0.5 = Massive Reach.
+    float attenuation = 1.0 / (pow(dist, l_decay) + 1.0);
+    
+    // --- FIX 1: ALBEDO BLEACHING (Color Wash) ---
+    // The stronger the light hits, the more the object's base color is pushed to white.
+    // This allows the pure Light Color to dominate the diffuse multiplication.
+    float washPower = clamp(attenuation * l_intensity * 0.00002, 0.0, 0.85); // Capped at 85% to retain slight native texture
+    vec3 effectiveAlbedo = mix(albedo, vec3(1.0), washPower * (1.0 - metallic));
+
+    // 1. Fresnel
+    // Boosted baseline F0 for non-metals from 0.04 to 0.08 to catch more pure light color
+    vec3 F0 = mix(vec3(0.30), effectiveAlbedo, metallic);
     vec3 F = F0 + (1.0 - F0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);
     
+    // 2. Normal Distribution
     float alpha = max(roughness * roughness, 0.01); // Prevent pure 0.0 roughness explosions
     float alpha2 = alpha * alpha;
     float denomD = (NdotH * NdotH * (alpha2 - 1.0) + 1.0);
     float D = alpha2 / (3.1415926535 * denomD * denomD);
     
+    // 3. Geometry
     float k = ((roughness + 1.0) * (roughness + 1.0)) / 8.0;
     float gl = NdotL / (NdotL * (1.0 - k) + k);
     float gv = NdotV / (NdotV * (1.0 - k) + k);
     float G = gl * gv;
     
     vec3 kd = (vec3(1.0) - F) * (1.0 - metallic);
-    vec3 diffuse = kd * (albedo / 3.1415926535) * NdotL;
+    vec3 diffuse = kd * (effectiveAlbedo / 3.1415926535) * NdotL;
     
-    // --- FIX 3: SPECULAR CAPPING ---
+    // --- FIX 2: SPECULAR BOOST ---
     // Mathematically clamp the raw specular intensity so it doesn't break the physics limits
+    // Multiply the final specular output by 2.5 to form a brilliant colored glaze
     vec3 specular = (D * G * F) / (4.0 * NdotV + 0.0001);
-    specular = min(specular, vec3(10.0)); // Prevent infinite spikes
-    
-    // --- NEW: USER CONTROLLED ATTENUATION DECAY ---
-    float dist = length(l_pos - surfacePos);
-    float distanceFalloff = pow(max(1.0 - pow((dist * dist) / (u_LightRadius * u_LightRadius), 2.0), 0.0), 2.0);
-    
-    // l_decay replaces the hardcoded square law. 
-    // 2.0 = Realistic Inverse Square. 1.0 = Linear (Reaches far). 0.5 = Massive Reach.
-    float attenuation = distanceFalloff / (pow(dist, l_decay) + 1.0);
+    specular = min(specular * 2.5, vec3(10.0)); // Prevent infinite spikes
     
     vec3 radiance = l_color * l_intensity * attenuation;
     
@@ -275,12 +284,17 @@ void main() {
     vec3 camPos = vec3(0.0, 0.0, -getZc());
     vec3 v = normalize(camPos - surfacePos);
     
-    vec3 baseAlbedo = pow(albedo, vec3(2.2)); // Convert to linear
+    // Convert both textures to linear space
+    vec3 originalColor = pow(texture(u_OriginalTex, uv).rgb, vec3(2.2)); 
+    vec3 computedAlbedo = pow(albedo, vec3(2.2)); 
 
-    // FIX #3: Ambient now uses baseAlbedo instead of originalColor.
-    // The original photo has baked-in shadows; multiplying ambient against it
-    // double-darkens shadowed regions. Using the flat albedo keeps ambient
-    // physically consistent with the point lights.
+    // --- FIX: ALBEDO RESTORATION BLEND ---
+    // Blends the photographic reality of the original image with the flattened intrinsic albedo.
+    // 0.0 = Pure Photo (Perfect Texture, Heavy baked shadows)
+    // 1.0 = Pure Albedo (No baked shadows, Plastic/Splotchy texture)
+    vec3 baseAlbedo = mix(originalColor, computedAlbedo, u_AlbedoBlend);
+
+    // We must apply the ambient light to the blended ALBEDO
     vec3 ambientLighting = u_AmbientLight * baseAlbedo;
     
     vec3 pointLighting = vec3(0.0);
@@ -293,10 +307,11 @@ void main() {
     vec3 lPos2 = u_LightPos_2; lPos2.z = zMin + lPos2.z * (zMax - zMin);
     vec3 lPos3 = u_LightPos_3; lPos3.z = zMin + lPos3.z * (zMax - zMin);
     
-    pointLighting += computeLight(0, lPos0, u_LightColor_0, u_LightIntensity_0, u_LightDecay_0, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(1, lPos1, u_LightColor_1, u_LightIntensity_1, u_LightDecay_1, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(2, lPos2, u_LightColor_2, u_LightIntensity_2, u_LightDecay_2, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
-    pointLighting += computeLight(3, lPos3, u_LightColor_3, u_LightIntensity_3, u_LightDecay_3, surfacePos, n, v, baseAlbedo, u_Metallic, u_Roughness);
+    // Manually edited this to pass originalColor instead of baseAlbedo.
+    pointLighting += computeLight(0, lPos0, u_LightColor_0, u_LightIntensity_0, u_LightDecay_0, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
+    pointLighting += computeLight(1, lPos1, u_LightColor_1, u_LightIntensity_1, u_LightDecay_1, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
+    pointLighting += computeLight(2, lPos2, u_LightColor_2, u_LightIntensity_2, u_LightDecay_2, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
+    pointLighting += computeLight(3, lPos3, u_LightColor_3, u_LightIntensity_3, u_LightDecay_3, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
 
     vec3 C_linear = ambientLighting + pointLighting;
 

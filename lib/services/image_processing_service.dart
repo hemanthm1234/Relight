@@ -109,7 +109,11 @@ class ImageProcessingService {
         }
 
         double estimatedShading = sumWeights > 0 ? (sumIntensity / sumWeights) : centerIntensity;
-        estimatedShading = estimatedShading.clamp(1e-4, 1.0); // Safe threshold floor clamping bounds
+        
+        // --- CRITICAL ALBEDO FIX: Soft Illumination Division ---
+        // Clamping to 1e-4 amplified dark pixel noise by 10,000x, causing neon splotches.
+        // We clamp to 0.4 to mathematically cap the maximum brightness boost to 2.5x.
+        estimatedShading = math.max(estimatedShading, 0.4); 
 
         // Recover Albedo: R(x,y) = I(x,y) / S(x,y)
         var origPixel = original.getPixel(x, y);

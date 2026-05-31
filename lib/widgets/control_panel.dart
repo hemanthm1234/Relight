@@ -74,7 +74,15 @@ class _ControlPanelState extends State<ControlPanel> {
               ),
             ),
           ),
-          if (_currentIndex != -1) _buildActiveTabContent(context),
+          if (_currentIndex != -1) 
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.4,
+              ),
+              child: SingleChildScrollView(
+                child: _buildActiveTabContent(context),
+              ),
+            ),
           const SizedBox(height: 4),
           BottomNavigationBar(
             backgroundColor: Colors.transparent,
@@ -351,10 +359,10 @@ class _ControlPanelState extends State<ControlPanel> {
                   onChanged: (v) => state.updateGlobalParameters(newMicroDetail: v),
                 ),
                 _buildSlider(
-                  label: "Light Radius",
-                  value: state.lightRadius,
-                  min: 500.0, max: 5000.0,
-                  onChanged: (v) => state.updateGlobalParameters(newLightRadius: v),
+                  label: "De-Lighting (Albedo Mix)",
+                  value: state.albedoBlend,
+                  min: 0.0, max: 1.0,
+                  onChanged: (v) => state.updateGlobalParameters(newAlbedoBlend: v),
                 ),
               ],
             ),
@@ -382,22 +390,28 @@ class _ControlPanelState extends State<ControlPanel> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                RadialFovDial(
+                _buildSlider(
+                  label: "Field of View (FOV)",
                   value: state.fov,
                   min: 30.0,
                   max: 150.0,
                   onChanged: (v) => state.updateGlobalParameters(newFov: v),
                 ),
-                const SizedBox(height: 6),
-                NumberInputField(
-                  label: "Z-Min (Near)",
-                  value: state.zMinRatio,
-                  onChanged: (v) => state.updateGlobalParameters(newZMin: v),
+                const SizedBox(height: 4),
+                const Text(
+                  "Depth Range (Z)",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                NumberInputField(
-                  label: "Z-Max (Far)",
-                  value: state.zMaxRatio,
-                  onChanged: (v) => state.updateGlobalParameters(newZMax: v),
+                const SizedBox(height: 4),
+                VerticalDepthRange(
+                  zMin: state.zMinRatio,
+                  zMax: state.zMaxRatio,
+                  onZMinChanged: (v) => state.updateGlobalParameters(newZMin: v),
+                  onZMaxChanged: (v) => state.updateGlobalParameters(newZMax: v),
                 ),
               ],
             ),
@@ -773,6 +787,179 @@ class _NumberInputFieldState extends State<NumberInputField> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class VerticalDepthRange extends StatefulWidget {
+  final double zMin;
+  final double zMax;
+  final ValueChanged<double> onZMinChanged;
+  final ValueChanged<double> onZMaxChanged;
+
+  const VerticalDepthRange({
+    super.key,
+    required this.zMin,
+    required this.zMax,
+    required this.onZMinChanged,
+    required this.onZMaxChanged,
+  });
+
+  @override
+  State<VerticalDepthRange> createState() => _VerticalDepthRangeState();
+}
+
+class _VerticalDepthRangeState extends State<VerticalDepthRange> {
+  final double _minScale = 0.1;
+  final double _maxScale = 20.0;
+  
+  bool _isDraggingMin = false;
+  bool _isDraggingMax = false;
+
+  void _handleDrag(Offset localPosition, double height) {
+    final double padding = 16.0;
+    final double trackHeight = height - padding * 2;
+    double dy = (localPosition.dy - padding).clamp(0.0, trackHeight);
+    
+    double fraction = 1.0 - (dy / trackHeight);
+    double val = _minScale + fraction * (_maxScale - _minScale);
+    
+    if (_isDraggingMin) {
+      if (val >= widget.zMax - 0.1) val = widget.zMax - 0.1;
+      widget.onZMinChanged(val);
+    } else if (_isDraggingMax) {
+      if (val <= widget.zMin + 0.1) val = widget.zMin + 0.1;
+      widget.onZMaxChanged(val);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 180, // Reduced height to fit without scrolling
+      width: double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double h = constraints.maxHeight;
+          final double padding = 16.0;
+          final double trackHeight = h - padding * 2;
+          
+          double minFrac = (widget.zMin - _minScale) / (_maxScale - _minScale);
+          double maxFrac = (widget.zMax - _minScale) / (_maxScale - _minScale);
+          
+          // Clamp fractions just in case
+          minFrac = minFrac.clamp(0.0, 1.0);
+          maxFrac = maxFrac.clamp(0.0, 1.0);
+          
+          double minY = padding + trackHeight * (1.0 - minFrac);
+          double maxY = padding + trackHeight * (1.0 - maxFrac);
+
+          return GestureDetector(
+            onVerticalDragDown: (details) {
+              double distMin = (details.localPosition.dy - minY).abs();
+              double distMax = (details.localPosition.dy - maxY).abs();
+              
+              if (distMin < distMax) {
+                _isDraggingMin = true;
+              } else {
+                _isDraggingMax = true;
+              }
+              _handleDrag(details.localPosition, h);
+            },
+            onVerticalDragUpdate: (details) {
+              _handleDrag(details.localPosition, h);
+            },
+            onVerticalDragEnd: (_) {
+              _isDraggingMin = false;
+              _isDraggingMax = false;
+            },
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Background Track
+                Positioned(
+                  left: constraints.maxWidth / 2 - 2,
+                  top: padding,
+                  bottom: padding,
+                  width: 4,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(20),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                // Active Track (between min and max)
+                Positioned(
+                  left: constraints.maxWidth / 2 - 2,
+                  top: maxY,
+                  bottom: h - minY,
+                  width: 4,
+                  child: Container(
+                    color: Colors.blueAccent,
+                  ),
+                ),
+                // Min indicator (Left)
+                Positioned(
+                  left: 0,
+                  top: minY - 12,
+                  right: constraints.maxWidth / 2 + 10,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      "Z-Min\n${widget.zMin.toStringAsFixed(1)}",
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.1),
+                    ),
+                  ),
+                ),
+                // Min Handle
+                Positioned(
+                  left: constraints.maxWidth / 2 - 8,
+                  top: minY - 8,
+                  width: 16,
+                  height: 16,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black.withAlpha(100), blurRadius: 4)],
+                    ),
+                  ),
+                ),
+                // Max indicator (Right)
+                Positioned(
+                  left: constraints.maxWidth / 2 + 10,
+                  top: maxY - 12,
+                  right: 0,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Z-Max\n${widget.zMax.toStringAsFixed(1)}",
+                      style: const TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold, height: 1.1),
+                    ),
+                  ),
+                ),
+                // Max Handle
+                Positioned(
+                  left: constraints.maxWidth / 2 - 8,
+                  top: maxY - 8,
+                  width: 16,
+                  height: 16,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [BoxShadow(color: Colors.blueAccent.withAlpha(100), blurRadius: 6)],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

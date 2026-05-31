@@ -74,6 +74,10 @@ class _RelightCanvasState extends State<RelightCanvas> {
     // Shift origin to center of the image, matching shader math
     double mappedX = localPosition.dx - (offsetX + drawWidth / 2.0);
     double mappedY = localPosition.dy - (offsetY + drawHeight / 2.0);
+    
+    // Confine to image bounds exactly
+    mappedX = mappedX.clamp(-(drawWidth / 2.0), drawWidth / 2.0);
+    mappedY = mappedY.clamp(-(drawHeight / 2.0), drawHeight / 2.0);
 
     state.updateSelectedLightPos(mappedX, mappedY);
   }
@@ -163,7 +167,7 @@ class PBRShaderPainter extends CustomPainter {
 
     // --- PHOTOREALISM TUNING UNIFORMS ---
     shader.setFloat(fi++, state.microDetailStrength);
-    shader.setFloat(fi++, state.lightRadius);
+    shader.setFloat(fi++, state.albedoBlend);
 
     // --- CAMERA UNIFORMS ---
     shader.setFloat(fi++, state.fov * math.pi / 180.0);
