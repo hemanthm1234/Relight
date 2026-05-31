@@ -54,7 +54,9 @@ vec2 snapUV(vec2 uv) {
 }
 
 float unpackDepth(vec2 uv) {
-    vec3 color = pow(texture(u_DepthTex, snapUV(uv)).rgb, vec3(1.0 / 2.2));
+    // Depth texture uses 16-bit packing: R = coarse, G = fine
+    // No gamma correction — depth is synthetic data, not a photograph
+    vec3 color = texture(u_DepthTex, snapUV(uv)).rgb;
     return color.r + (color.g / 255.0);
 }
 

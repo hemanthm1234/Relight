@@ -34,7 +34,7 @@ class ImageProcessingService {
 
   static Map<String, Uint8List> _processTexturesIsolate(Map<String, dynamic> args) {
     final Uint8List imageBytes = args['imageBytes'];
-    final Float32List depthData = args['depthData'];
+    final Float32List rawDepthData = args['depthData'];
 
     img.Image? original = img.decodeImage(imageBytes);
     if (original == null) throw Exception("Cannot parse image source.");
@@ -42,8 +42,77 @@ class ImageProcessingService {
     int w = original.width;
     int h = original.height;
 
+    // =====================================================================
+    // DEPTH MAP EDGE-PRESERVING SMOOTHING (BILATERAL FILTER)
+    // Smooths planar wobble from the AI model while preserving sharp object silhouettes.
+    // Applied at the native 518x518 model resolution for speed (~10-20ms per pass).
+    // Two passes are run for stronger smoothing of AI terracing artifacts.
+    // =====================================================================
+    const int depthDim = 518;
+    const int numPasses = 2;             // Multiple passes for stronger smoothing
+
+    const int radius = 5;                // 11x11 kernel
+    const double sigmaSpatial = 5.0;     // How far neighboring pixels influence the center
+    const double sigmaRange = 0.05;      // 5% depth difference limit (preserves sharp edges)
+
+    // Precompute spatial Gaussian weights for the kernel
+    final int kernelWidth = radius * 2 + 1;
+    final List<double> spatialWeights = List.filled(kernelWidth * kernelWidth, 0.0);
+    for (int dy = -radius; dy <= radius; dy++) {
+      for (int dx = -radius; dx <= radius; dx++) {
+        spatialWeights[(dy + radius) * kernelWidth + (dx + radius)] =
+            math.exp(-(dx * dx + dy * dy) / (2.0 * sigmaSpatial * sigmaSpatial));
+      }
+    }
+
+    // Ping-pong buffers for multi-pass filtering
+    Float32List sourceBuffer = rawDepthData;
+    Float32List destBuffer = Float32List(depthDim * depthDim);
+
+    for (int pass = 0; pass < numPasses; pass++) {
+      for (int y = 0; y < depthDim; y++) {
+        for (int x = 0; x < depthDim; x++) {
+          final double centerDepth = sourceBuffer[y * depthDim + x];
+          double weightSum = 0.0;
+          double depthSum = 0.0;
+
+          for (int dy = -radius; dy <= radius; dy++) {
+            final int ny = (y + dy).clamp(0, depthDim - 1);
+            for (int dx = -radius; dx <= radius; dx++) {
+              final int nx = (x + dx).clamp(0, depthDim - 1);
+
+              final double neighborDepth = sourceBuffer[ny * depthDim + nx];
+
+              // Pre-calculated spatial weight
+              final double wSpatial = spatialWeights[(dy + radius) * kernelWidth + (dx + radius)];
+
+              // Range weight: drops to ~0 if depth jump exceeds sigmaRange
+              final double depthDiff = neighborDepth - centerDepth;
+              final double wRange = math.exp(-(depthDiff * depthDiff) / (2.0 * sigmaRange * sigmaRange));
+
+              final double combinedWeight = wSpatial * wRange;
+              weightSum += combinedWeight;
+              depthSum += neighborDepth * combinedWeight;
+            }
+          }
+          destBuffer[y * depthDim + x] = depthSum / weightSum;
+        }
+      }
+      // Swap buffers for next pass
+      final Float32List temp = sourceBuffer == rawDepthData
+          ? Float32List.fromList(destBuffer)
+          : destBuffer;
+      sourceBuffer = temp;
+      destBuffer = Float32List(depthDim * depthDim);
+    }
+    final Float32List depthData = sourceBuffer;
+    // =====================================================================
+
     // 1. Synthesize High Resolution Depth Texture Asset Buffer
-    img.Image depthTexImg = img.Image(width: w, height: h, numChannels: 1, format: img.Format.uint8);
+    // 16-BIT DEPTH PACKING: R = coarse (high byte), G = fine (low byte)
+    // This gives 65,025 distinct depth levels instead of only 256 from 8-bit.
+    // The shader's unpackDepth() reconstructs: depth = R + G/255.0
+    img.Image depthTexImg = img.Image(width: w, height: h, numChannels: 3, format: img.Format.uint8);
     // Depth Anything outputs continuous 518x518 data. Sample back symmetrically to original proportions.
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
@@ -52,9 +121,15 @@ class ImageProcessingService {
         
         int mX = modelX.floor().clamp(0, 517);
         int mY = modelY.floor().clamp(0, 517);
-        double depthVal = depthData[mY * 518 + mX].toDouble();
+        double depthVal = depthData[mY * 518 + mX].toDouble().clamp(0.0, 1.0);
         
-        depthTexImg.setPixelR(x, y, (depthVal * 255.0).round().clamp(0, 255));
+        // 16-bit pack: split depth into coarse R and fine G channels
+        double scaledDepth = depthVal * 255.0;
+        int rByte = scaledDepth.floor().clamp(0, 255);
+        double fractPart = scaledDepth - rByte;
+        int gByte = (fractPart * 255.0).round().clamp(0, 255);
+        
+        depthTexImg.setPixelRgb(x, y, rByte, gByte, 0);
       }
     }
 

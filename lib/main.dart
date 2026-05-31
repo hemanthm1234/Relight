@@ -31,7 +31,7 @@ import 'widgets/map_selector.dart';
 // them in assets/cache/  (sample_albedo.png, sample_original.png, sample_depth.png)
 // The sample image button will then skip the full inference pipeline entirely.
 // ─────────────────────────────────────────────────────────────────────────────
-const bool kUseCachedSample = true;
+const bool kUseCachedSample = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
