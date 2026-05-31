@@ -235,7 +235,7 @@ class _ControlPanelState extends State<ControlPanel> {
             _buildSlider(
               label: "Light Depth (Z)",
               value: activeLight.pos.z,
-              min: 0.0, max: 1.0,
+              min: -1.0, max: 1.0,
               onChanged: (v) => state.updateSelectedLightPos(activeLight.pos.x, activeLight.pos.y, z: v),
             ),
             _buildSlider(
