@@ -103,7 +103,10 @@ float getLumOffset(vec2 uv, vec2 offset) {
 // macro geometry, then optionally perturbs it with luminance micro-detail
 // in proper TBN (Tangent-Bitangent-Normal) space, gated by u_MicroDetailStrength.
 vec3 getNormal(vec2 uv) {
-    vec2 texSize = 1.0 / u_ImageSize;
+    // MACRO BASELINE WIDENING: Step 3 pixels instead of 1 for the Sobel cross-product.
+    // This bridges over residual micro-jitter from 16-bit float rounding,
+    // acting as a built-in anti-aliaser for the normal vectors.
+    vec2 texSize = 3.0 / u_ImageSize;
     
     vec3 pTL = getPosition(uv + vec2(-texSize.x, -texSize.y));
     vec3 pTC = getPosition(uv + vec2( 0.0,        -texSize.y));
@@ -155,9 +158,11 @@ vec3 getNormal(vec2 uv) {
 // TRUE 3D SHADOW RAYMARCHING
 // ---------------------------------------------------------
 float calculateShadow(vec3 surfacePos, vec3 l_pos, vec3 n) {
-    if (l_pos.z > surfacePos.z) return 0.0;
-    
     vec3 l = normalize(l_pos - surfacePos);
+    
+    // Normal-based backface culling: if the surface faces away from the light, it's in shadow.
+    // This replaces the old hard Z-slice which created an invisible flat wall.
+    if (dot(n, l) <= 0.0) return 0.0;
     float shadowAccum = 0.0;
     int maxSteps = 32;
     
@@ -202,15 +207,20 @@ float calculateShadow(vec3 surfacePos, vec3 l_pos, vec3 n) {
 // ---------------------------------------------------------
 vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, float l_decay, vec3 surfacePos, vec3 n, vec3 v, vec3 albedo, float metallic, float roughness) {
     if (index >= int(u_ActiveLights)) return vec3(0.0);
-    if (l_pos.z > surfacePos.z) return vec3(0.0); 
     
     vec3 l = normalize(l_pos - surfacePos);
+    
+    // Normal-based backface culling: gracefully roll light to zero based on surface curvature
+    // instead of an arbitrary depth threshold that creates hard horizontal lines
+    float NdotL = max(dot(n, l), 0.0);
+    if (NdotL <= 0.001) return vec3(0.0);
+    
     vec3 h = normalize(l + v);
     
     // Pass the normal to the shadow function for biasing
     float V_shadow = calculateShadow(surfacePos, l_pos, n);
     
-    float NdotL = max(dot(n, l), 0.0);
+    // NdotL already computed above for early exit
     float NdotV = max(dot(n, v), 0.0001);
     float NdotH = max(dot(n, h), 0.0);
     float VdotH = max(dot(v, h), 0.0);

@@ -25,6 +25,13 @@ class ImageProcessingService {
     return completer.future;
   }
 
+  /// Catmull-Rom cubic interpolation between 4 equally-spaced samples.
+  /// Produces C¹-continuous curves (smooth first derivative) unlike bilinear
+  /// which creates flat planes with discontinuous slopes at grid boundaries.
+  static double _cubicInterpolate(double p0, double p1, double p2, double p3, double t) {
+    return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));
+  }
+
   Future<Map<String, Uint8List>> executeIntrinsicDecomposition(Uint8List targetImageBytes, Float32List depthMapData) async {
     return await compute(_processTexturesIsolate, {
       'imageBytes': targetImageBytes,
@@ -112,16 +119,38 @@ class ImageProcessingService {
     // 16-BIT DEPTH PACKING: R = coarse (high byte), G = fine (low byte)
     // This gives 65,025 distinct depth levels instead of only 256 from 8-bit.
     // The shader's unpackDepth() reconstructs: depth = R + G/255.0
+    //
+    // BICUBIC UPSCALING: Uses 16-point Catmull-Rom interpolation for C¹-continuous
+    // depth curves. This eliminates the grid-line artifacts in the normal map that
+    // nearest-neighbor/bilinear sampling creates (flat tiles with discontinuous slopes).
     img.Image depthTexImg = img.Image(width: w, height: h, numChannels: 3, format: img.Format.uint8);
-    // Depth Anything outputs continuous 518x518 data. Sample back symmetrically to original proportions.
+    
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        double modelX = (x / w) * 518.0;
-        double modelY = (y / h) * 518.0;
+        double modelX = (x / (w - 1)) * 517.0;
+        double modelY = (y / (h - 1)) * 517.0;
+
+        int px = modelX.floor();
+        int py = modelY.floor();
+        double tx = modelX - px;
+        double ty = modelY - py;
+
+        // 16-point bicubic interpolation (Catmull-Rom)
+        // Sample a 4x4 neighborhood and interpolate along rows, then columns
+        List<double> colInterp = [0.0, 0.0, 0.0, 0.0];
         
-        int mX = modelX.floor().clamp(0, 517);
-        int mY = modelY.floor().clamp(0, 517);
-        double depthVal = depthData[mY * 518 + mX].toDouble().clamp(0.0, 1.0);
+        for (int i = -1; i <= 2; i++) {
+          int yy = (py + i).clamp(0, 517);
+          double p0 = depthData[yy * 518 + (px - 1).clamp(0, 517)];
+          double p1 = depthData[yy * 518 + px.clamp(0, 517)];
+          double p2 = depthData[yy * 518 + (px + 1).clamp(0, 517)];
+          double p3 = depthData[yy * 518 + (px + 2).clamp(0, 517)];
+          
+          colInterp[i + 1] = _cubicInterpolate(p0, p1, p2, p3, tx);
+        }
+        
+        double depthVal = _cubicInterpolate(colInterp[0], colInterp[1], colInterp[2], colInterp[3], ty)
+            .clamp(0.0, 1.0);
         
         // 16-bit pack: split depth into coarse R and fine G channels
         double scaledDepth = depthVal * 255.0;
