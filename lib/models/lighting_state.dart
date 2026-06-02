@@ -38,7 +38,7 @@ class LightSource {
     this.coneInnerAngle = 15.0,
     this.coneOuterAngle = 25.0,
     this.theta = 0.0,
-    this.phi = 180.0, // Default pointing straight back at the camera (z = -1)
+    this.phi = 90.0, // Default pointing along the screen plane (z = 0)
   });
 }
 
