@@ -32,7 +32,7 @@ import 'widgets/map_selector.dart';
 // them in assets/cache/  (sample_albedo.png, sample_original.png, sample_depth.png)
 // The sample image button will then skip the full inference pipeline entirely.
 // ─────────────────────────────────────────────────────────────────────────────
-const bool kUseCachedSample = false;
+const bool kUseCachedSample = true;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -736,7 +736,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   }
 
   Widget _buildLandingPage() {
-    final List<String> sampleImages = ["1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg", "6.jpg"];
+    final List<String> sampleImages = ["1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg"];
 
     return SafeArea(
       child: CustomScrollView(
