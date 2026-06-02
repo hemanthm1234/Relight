@@ -30,6 +30,18 @@ Experience photorealistic, physically-based lighting interactions running at bla
 
 ---
 
+## 📌 Examples
+
+<p align="center">
+  <img src="example_relights/example_1.png" width="64%">
+  <img src="example_relights/example_4.png" width="35%">
+</p>
+
+<p align="center">
+  <img src="example_relights/example_2.png" width="49.5%">
+  <img src="example_relights/example_3.png" width="50%">
+</p>
+
 ## 📐 Mathematical Foundations
 
 ![2D Relight Math](2D_Relight_math.png)

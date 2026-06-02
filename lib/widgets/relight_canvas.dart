@@ -90,9 +90,12 @@ class _RelightCanvasState extends State<RelightCanvas> {
     double mappedX = localPosition.dx - (offsetX + drawWidth / 2.0);
     double mappedY = localPosition.dy - (offsetY + drawHeight / 2.0);
     
-    mappedX = mappedX.clamp(-(drawWidth / 2.0), drawWidth / 2.0);
-    mappedY = mappedY.clamp(-(drawHeight / 2.0), drawHeight / 2.0);
-    return (mappedX, mappedY);
+    double u = mappedX / drawWidth;
+    double v = mappedY / drawHeight;
+    
+    u = u.clamp(-0.5, 0.5);
+    v = v.clamp(-0.5, 0.5);
+    return (u, v);
   }
 
   @override
@@ -206,9 +209,12 @@ class PBRShaderPainter extends CustomPainter {
         double innerCos = math.cos(light.coneInnerAngle * math.pi / 180.0);
         double outerCos = math.cos(light.coneOuterAngle * math.pi / 180.0);
 
+        double pixelX = light.pos.x * drawRect.width;
+        double pixelY = light.pos.y * drawRect.height;
+
         shader.setFloat(fi++, light.type.index.toDouble());
-        shader.setFloat(fi++, light.pos.x);
-        shader.setFloat(fi++, light.pos.y);
+        shader.setFloat(fi++, pixelX);
+        shader.setFloat(fi++, pixelY);
         shader.setFloat(fi++, light.pos.z);
         shader.setFloat(fi++, dx); // dir.x
         shader.setFloat(fi++, dy); // dir.y
@@ -247,8 +253,8 @@ class PBRShaderPainter extends CustomPainter {
       final bool isSelected = (i == state.selectedLightIndex);
 
       // World (0,0) = center of the draw rect
-      final double screenX = light.pos.x + drawRect.left + drawRect.width / 2.0;
-      final double screenY = light.pos.y + drawRect.top + drawRect.height / 2.0;
+      final double screenX = (light.pos.x * drawRect.width) + drawRect.left + drawRect.width / 2.0;
+      final double screenY = (light.pos.y * drawRect.height) + drawRect.top + drawRect.height / 2.0;
       final Offset center = Offset(screenX, screenY);
 
       // Normalized Z: 0.0 is front (bigger), 1.0 is back (smaller)
