@@ -87,7 +87,7 @@ Experience photorealistic, physically-based lighting interactions running at bla
    flutter run --release
    ```
 
-You can also directly find the latest [apk file here](build/app/outputs/flutter-apk/app-release.apk).
+You can also directly find the latest [apk file here](https://github.com/hemanthm1234/Relight/releases/download/v1.0.0/app-release.apk).
 
 ---
 
