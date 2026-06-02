@@ -679,7 +679,22 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   Widget build(BuildContext context) {
     final state = context.watch<LightingState>();
     
-    return Scaffold(
+    return PopScope(
+      canPop: _albedoTex == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
+        setState(() {
+          _albedoTex?.dispose();
+          _originalTex?.dispose();
+          _depthTex?.dispose();
+          _albedoTex = null;
+          _originalTex = null;
+          _depthTex = null;
+        });
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: GestureDetector(
           onTap: () {
@@ -705,7 +720,21 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const ExamplesGalleryScreen()),
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const ExamplesGalleryScreen(),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                            ),
+                            child: child,
+                          ),
+                        );
+                      },
+                      transitionDuration: const Duration(milliseconds: 400),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -749,41 +778,65 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
             )
         ],
       ),
-      body: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
-        ? Column(
-            children: [
-              const GlobalMapSelector(),
-              Expanded(
-                child: RelightCanvas(
-                  key: _canvasKey,
-                  albedoTexture: _albedoTex!,
-                  originalTexture: _originalTex!,
-                  depthTexture: _depthTex!,
-                  compiledShader: _shader!,
-                ),
-              ),
-              const ControlPanel(),
-            ],
-          )
-        : _isLoading
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(
-                        _statusMessage,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
+          ? SizedBox.expand(
+              key: const ValueKey('EditorScreen'),
+              child: Column(
+                children: [
+                  const GlobalMapSelector(),
+                  Expanded(
+                    child: RelightCanvas(
+                      key: _canvasKey,
+                      albedoTexture: _albedoTex!,
+                      originalTexture: _originalTex!,
+                      depthTexture: _depthTex!,
+                      compiledShader: _shader!,
+                    ),
                   ),
+                  const ControlPanel(),
+                ],
+              ),
+            )
+          : _isLoading
+              ? SizedBox.expand(
+                  key: const ValueKey('LoadingScreen'),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(
+                            _statusMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : SizedBox.expand(
+                  key: const ValueKey('LandingPage'),
+                  child: _buildLandingPage(),
                 ),
-              )
-            : _buildLandingPage(),
+      ),
+    ),
     );
   }
 

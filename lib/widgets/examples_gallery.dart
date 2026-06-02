@@ -54,8 +54,17 @@ class _ExamplesGalleryScreenState extends State<ExamplesGalleryScreen> {
             pageBuilder: (context, animation, secondaryAnimation) => 
                 FullScreenGallery(images: _images, initialIndex: index),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                  ),
+                  child: child,
+                ),
+              );
             },
+            transitionDuration: const Duration(milliseconds: 400),
           )
         );
       },
@@ -76,12 +85,9 @@ class _ExamplesGalleryScreenState extends State<ExamplesGalleryScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Hero(
-              tag: 'gallery_image_$assetPath',
-              child: Image.asset(
-                assetPath,
-                fit: BoxFit.cover,
-              ),
+            Image.asset(
+              assetPath,
+              fit: BoxFit.cover,
             ),
             Positioned.fill(
               child: Container(
@@ -192,12 +198,9 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             return InteractiveViewer(
               minScale: 0.8,
               maxScale: 5.0,
-              child: Hero(
-                tag: 'gallery_image_$assetPath',
-                child: Image.asset(
-                  assetPath,
-                  fit: BoxFit.contain,
-                ),
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
               ),
             );
           },
