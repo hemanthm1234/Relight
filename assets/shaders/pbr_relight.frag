@@ -29,11 +29,34 @@ uniform float u_FOV;
 uniform float u_ZminRatio;
 uniform float u_ZmaxRatio;
 
-// Light Structs
-uniform vec3 u_LightPos_0; uniform vec3 u_LightColor_0; uniform float u_LightIntensity_0; uniform float u_LightDecay_0;
-uniform vec3 u_LightPos_1; uniform vec3 u_LightColor_1; uniform float u_LightIntensity_1; uniform float u_LightDecay_1;
-uniform vec3 u_LightPos_2; uniform vec3 u_LightColor_2; uniform float u_LightIntensity_2; uniform float u_LightDecay_2;
-uniform vec3 u_LightPos_3; uniform vec3 u_LightColor_3; uniform float u_LightIntensity_3; uniform float u_LightDecay_3;
+// Universal Light Data Structure
+// Up to 16 Lights * 14 Floats = 224 Floats
+uniform float u_LightData[224];
+
+struct Light {
+    int type;          // 0 = Spherical, 1 = Conical
+    vec3 pos;          // Used by Spherical & Conical
+    vec3 dir;          // Used by Conical
+    vec3 color;
+    float intensity;
+    float decay;       // Distance falloff exponent
+    float coneInner;   // Cosine of the inner angle
+    float coneOuter;   // Cosine of the outer angle
+};
+
+Light unpackLight(int index) {
+    int base = index * 14;
+    Light l;
+    l.type = int(u_LightData[base + 0]);
+    l.pos = vec3(u_LightData[base + 1], u_LightData[base + 2], u_LightData[base + 3]);
+    l.dir = vec3(u_LightData[base + 4], u_LightData[base + 5], u_LightData[base + 6]);
+    l.color = vec3(u_LightData[base + 7], u_LightData[base + 8], u_LightData[base + 9]);
+    l.intensity = u_LightData[base + 10];
+    l.decay = u_LightData[base + 11];
+    l.coneInner = u_LightData[base + 12];
+    l.coneOuter = u_LightData[base + 13];
+    return l;
+}
 
 out vec4 fragColor;
 
@@ -157,23 +180,21 @@ vec3 getNormal(vec2 uv) {
 // ---------------------------------------------------------
 // TRUE 3D SHADOW RAYMARCHING
 // ---------------------------------------------------------
-float calculateShadow(vec3 surfacePos, vec3 l_pos, vec3 n) {
-    vec3 l = normalize(l_pos - surfacePos);
-    
+float calculateShadow(Light light, vec3 surfacePos, vec3 n, vec3 l) {
     // Normal-based backface culling: if the surface faces away from the light, it's in shadow.
-    // This replaces the old hard Z-slice which created an invisible flat wall.
     if (dot(n, l) <= 0.0) return 0.0;
+    
     float shadowAccum = 0.0;
     int maxSteps = 32;
     
-    // --- FIX 1: THE SHADOW BIAS ---
+    // --- THE SHADOW BIAS ---
     // Push the starting position out along the Normal vector slightly.
-    // This prevents the ray from instantly colliding with its own microscopic surface geometry.
     float bias = 5.0; 
     vec3 currentRayPos = surfacePos + (n * bias) + (l * bias); 
     
-    vec3 rayStep = l * (length(l_pos - currentRayPos) / float(maxSteps));
     float zc = getZc();
+    float marchDist = length(light.pos - currentRayPos);
+    vec3 rayStep = l * (marchDist / float(maxSteps));
 
     for(int i = 0; i < maxSteps; i++) {
         float projFactor = 1.0 + currentRayPos.z / zc;
@@ -205,36 +226,43 @@ float calculateShadow(vec3 surfacePos, vec3 l_pos, vec3 n) {
 // ---------------------------------------------------------
 // PBR MASTER EQUATION EVALUATION
 // ---------------------------------------------------------
-vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, float l_decay, vec3 surfacePos, vec3 n, vec3 v, vec3 albedo, float metallic, float roughness) {
-    if (index >= int(u_ActiveLights)) return vec3(0.0);
+vec3 computeLight(Light light, vec3 surfacePos, vec3 n, vec3 v, vec3 albedo, float metallic, float roughness) {
+    vec3 l;
+    float attenuation = 1.0;
+
+    // ----------------------------------------------------
+    // 1. DETERMINE LIGHT VECTOR & ATTENUATION
+    // ----------------------------------------------------
+    l = normalize(light.pos - surfacePos);
+    float dist = length(light.pos - surfacePos);
     
-    vec3 l = normalize(l_pos - surfacePos);
+    // Pure attenuation based on decay
+    attenuation = 1.0 / (pow(dist, light.decay) + 1.0);
     
-    // Normal-based backface culling: gracefully roll light to zero based on surface curvature
-    // instead of an arbitrary depth threshold that creates hard horizontal lines
+    if (light.type == 1) {
+        // --- CONICAL (SPOTLIGHT) ---
+        float theta = dot(l, normalize(-light.dir));
+        float spotFalloff = smoothstep(light.coneOuter, light.coneInner, theta);
+        attenuation *= spotFalloff;
+    }
+
+    if (attenuation <= 0.0) return vec3(0.0);
+    
     float NdotL = max(dot(n, l), 0.0);
     if (NdotL <= 0.001) return vec3(0.0);
     
     vec3 h = normalize(l + v);
     
     // Pass the normal to the shadow function for biasing
-    float V_shadow = calculateShadow(surfacePos, l_pos, n);
+    float V_shadow = calculateShadow(light, surfacePos, n, l);
     
     // NdotL already computed above for early exit
     float NdotV = max(dot(n, v), 0.0001);
     float NdotH = max(dot(n, h), 0.0);
     float VdotH = max(dot(v, h), 0.0);
     
-    // --- NEW: USER CONTROLLED ATTENUATION DECAY ---
-    float dist = length(l_pos - surfacePos);
-    // l_decay replaces the hardcoded square law. 
-    // 2.0 = Realistic Inverse Square. 1.0 = Linear (Reaches far). 0.5 = Massive Reach.
-    float attenuation = 1.0 / (pow(dist, l_decay) + 1.0);
-    
-    // --- FIX 1: ALBEDO BLEACHING (Color Wash) ---
-    // The stronger the light hits, the more the object's base color is pushed to white.
-    // This allows the pure Light Color to dominate the diffuse multiplication.
-    float washPower = clamp(attenuation * l_intensity * 0.00002, 0.0, 0.85); // Capped at 85% to retain slight native texture
+    // ALBEDO BLEACHING (Color Wash)
+    float washPower = clamp(attenuation * light.intensity * 0.00002, 0.0, 0.85); // Capped at 85% to retain slight native texture
     vec3 effectiveAlbedo = mix(albedo, vec3(1.0), washPower * (1.0 - metallic));
 
     // 1. Fresnel
@@ -263,7 +291,7 @@ vec3 computeLight(int index, vec3 l_pos, vec3 l_color, float l_intensity, float 
     vec3 specular = (D * G * F) / (4.0 * NdotV + 0.0001);
     specular = min(specular * 2.5, vec3(10.0)); // Prevent infinite spikes
     
-    vec3 radiance = l_color * l_intensity * attenuation;
+    vec3 radiance = light.color * light.intensity * attenuation;
     
     return V_shadow * radiance * (diffuse + specular);
 }
@@ -314,16 +342,16 @@ void main() {
     float zMin = u_ZminRatio * zc;
     float zMax = u_ZmaxRatio * zc;
 
-    vec3 lPos0 = u_LightPos_0; lPos0.z = zMin + lPos0.z * (zMax - zMin);
-    vec3 lPos1 = u_LightPos_1; lPos1.z = zMin + lPos1.z * (zMax - zMin);
-    vec3 lPos2 = u_LightPos_2; lPos2.z = zMin + lPos2.z * (zMax - zMin);
-    vec3 lPos3 = u_LightPos_3; lPos3.z = zMin + lPos3.z * (zMax - zMin);
-    
-    // Manually edited this to pass originalColor instead of baseAlbedo.
-    pointLighting += computeLight(0, lPos0, u_LightColor_0, u_LightIntensity_0, u_LightDecay_0, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
-    pointLighting += computeLight(1, lPos1, u_LightColor_1, u_LightIntensity_1, u_LightDecay_1, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
-    pointLighting += computeLight(2, lPos2, u_LightColor_2, u_LightIntensity_2, u_LightDecay_2, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
-    pointLighting += computeLight(3, lPos3, u_LightColor_3, u_LightIntensity_3, u_LightDecay_3, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
+    int activeCount = min(int(u_ActiveLights), 16);
+    for (int i = 0; i < 16; i++) {
+        if (i >= activeCount) break;
+        
+        Light l = unpackLight(i);
+        // Correct the Z-scale for the light's position
+        l.pos.z = zMin + l.pos.z * (zMax - zMin);
+        
+        pointLighting += computeLight(l, surfacePos, n, v, originalColor, u_Metallic, u_Roughness);
+    }
 
     vec3 C_linear = ambientLighting + pointLighting;
 

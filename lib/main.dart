@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image/image.dart' as img;
 import 'models/lighting_state.dart';
 import 'services/depth_inference_service.dart';
 import 'services/image_processing_service.dart';
@@ -136,12 +137,16 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
       final depthBytes    = (await rootBundle.load('assets/cache/${baseName}_depth.png')).buffer.asUint8List();
 
       final List<ui.Image> handles = await Future.wait([
-        ImageProcessingService.createUiImageFromBytes(albedoBytes),
-        ImageProcessingService.createUiImageFromBytes(originalBytes),
-        ImageProcessingService.createUiImageFromBytes(depthBytes),
+        ImageProcessingService.bytesToUiImage(albedoBytes),
+        ImageProcessingService.bytesToUiImage(originalBytes),
+        ImageProcessingService.bytesToUiImage(depthBytes),
       ]);
 
       setState(() {
+        _albedoTex?.dispose();
+        _originalTex?.dispose();
+        _depthTex?.dispose();
+        
         _albedoTex   = handles[0];
         _originalTex = handles[1];
         _depthTex    = handles[2];
@@ -182,7 +187,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   // ── PHASE 1 ──────────────────────────────────────────────────────────────
   // Export the three generated maps to /storage/emulated/0/Download/
   // Run once, pull with adb, place in assets/cache/, then flip kUseCachedSample.
-  Future<void> _exportSampleMaps(String imageName, Map<String, Uint8List> texturePack) async {
+  Future<void> _exportSampleMaps(String imageName, Map<String, dynamic> texturePack) async {
     try {
       // Works on Android ≤9 via WRITE_EXTERNAL_STORAGE permission.
       // On Android 10+ the public Downloads folder is still accessible
@@ -202,15 +207,22 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     }
   }
 
-  Future<void> _writeMapFiles(String dirPath, String imageName, Map<String, Uint8List> texturePack) async {
+  Future<void> _writeMapFiles(String dirPath, String imageName, Map<String, dynamic> texturePack) async {
     final String baseName = imageName.split('.').first;
     final albedo   = File('$dirPath/${baseName}_albedo.png');
     final original = File('$dirPath/${baseName}_original.png');
     final depth    = File('$dirPath/${baseName}_depth.png');
 
-    await albedo.writeAsBytes(texturePack['albedo']!);
-    await original.writeAsBytes(texturePack['original']!);
-    await depth.writeAsBytes(texturePack['depth']!);
+    int w = texturePack['width'];
+    int h = texturePack['height'];
+
+    final albedoImg = img.Image.fromBytes(width: w, height: h, bytes: texturePack['albedo']!.buffer, numChannels: 4);
+    final origImg = img.Image.fromBytes(width: w, height: h, bytes: texturePack['original']!.buffer, numChannels: 4);
+    final depthImg = img.Image.fromBytes(width: w, height: h, bytes: texturePack['depth']!.buffer, numChannels: 4);
+
+    await albedo.writeAsBytes(img.encodePng(albedoImg));
+    await original.writeAsBytes(img.encodePng(origImg));
+    await depth.writeAsBytes(img.encodePng(depthImg));
 
     debugPrint('[Cache Export] ✅ ${baseName}_albedo.png   -> ${albedo.path}');
     debugPrint('[Cache Export] ✅ ${baseName}_original.png -> ${original.path}');
@@ -587,7 +599,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
       final Float32List computedDepthMatrix = await _inferenceService.runLocalInference(imageFile);
 
       setState(() => _statusMessage = "Estimating Albedo and Normal Maps...");
-      final Map<String, Uint8List> texturePack =
+      final Map<String, dynamic> texturePack =
           await _imageService.executeIntrinsicDecomposition(imgBytes, computedDepthMatrix);
 
       // ── PHASE 1 export ─────────────────────────────────────────────────────
@@ -603,13 +615,19 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
 
       // Transition structured byte lists into accelerated GPU Texture handles
       setState(() => _statusMessage = "Uploading textures to GPU...");
+      int w = texturePack['width'];
+      int h = texturePack['height'];
       final List<ui.Image> gpuHandles = await Future.wait([
-        ImageProcessingService.createUiImageFromBytes(texturePack['albedo']!),
-        ImageProcessingService.createUiImageFromBytes(texturePack['original']!),
-        ImageProcessingService.createUiImageFromBytes(texturePack['depth']!),
+        ImageProcessingService.createUiImageFromPixels(texturePack['albedo']!, w, h),
+        ImageProcessingService.createUiImageFromPixels(texturePack['original']!, w, h),
+        ImageProcessingService.createUiImageFromPixels(texturePack['depth']!, w, h),
       ]);
 
       setState(() {
+        _albedoTex?.dispose();
+        _originalTex?.dispose();
+        _depthTex?.dispose();
+
         _albedoTex   = gpuHandles[0];
         _originalTex = gpuHandles[1];
         _depthTex    = gpuHandles[2];
@@ -642,6 +660,9 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         title: GestureDetector(
           onTap: () {
             setState(() {
+              _albedoTex?.dispose();
+              _originalTex?.dispose();
+              _depthTex?.dispose();
               _albedoTex = null;
               _originalTex = null;
               _depthTex = null;

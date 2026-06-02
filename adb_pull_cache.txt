@@ -1,0 +1,3 @@
+adb pull /storage/emulated/0/Download/5_albedo.png assets/cache/
+adb pull /storage/emulated/0/Download/5_original.png assets/cache/
+adb pull /storage/emulated/0/Download/5_depth.png assets/cache/

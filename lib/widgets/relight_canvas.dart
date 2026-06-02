@@ -59,9 +59,25 @@ class _RelightCanvasState extends State<RelightCanvas> {
     return Rect.fromLTWH(offsetX, offsetY, drawW, drawH);
   }
 
-  void _handleTouch(Offset localPosition, LightingState state, Size canvasSize) {
+  void _handleTouchStart(Offset localPosition, LightingState state, Size canvasSize) {
+    if (!state.isLightingEnabled || state.selectedLightIndex < 0) return;
+    
+    double mappedX, mappedY;
+    (mappedX, mappedY) = _mapToWorld(localPosition, canvasSize);
+
+    state.updateSelectedLightPos(mappedX, mappedY);
+  }
+
+  void _handleTouchUpdate(Offset localPosition, LightingState state, Size canvasSize) {
     if (!state.isLightingEnabled || state.selectedLightIndex < 0) return;
 
+    double mappedX, mappedY;
+    (mappedX, mappedY) = _mapToWorld(localPosition, canvasSize);
+
+    state.updateSelectedLightPos(mappedX, mappedY);
+  }
+
+  (double, double) _mapToWorld(Offset localPosition, Size canvasSize) {
     double scaleX = canvasSize.width / widget.originalTexture.width;
     double scaleY = canvasSize.height / widget.originalTexture.height;
     double scale = math.min(scaleX, scaleY);
@@ -71,15 +87,12 @@ class _RelightCanvasState extends State<RelightCanvas> {
     double offsetX = (canvasSize.width - drawWidth) / 2.0;
     double offsetY = (canvasSize.height - drawHeight) / 2.0;
 
-    // Shift origin to center of the image, matching shader math
     double mappedX = localPosition.dx - (offsetX + drawWidth / 2.0);
     double mappedY = localPosition.dy - (offsetY + drawHeight / 2.0);
     
-    // Confine to image bounds exactly
     mappedX = mappedX.clamp(-(drawWidth / 2.0), drawWidth / 2.0);
     mappedY = mappedY.clamp(-(drawHeight / 2.0), drawHeight / 2.0);
-
-    state.updateSelectedLightPos(mappedX, mappedY);
+    return (mappedX, mappedY);
   }
 
   @override
@@ -92,11 +105,13 @@ class _RelightCanvasState extends State<RelightCanvas> {
         final drawRect = _computeFittedRect(canvasSize);
 
         return GestureDetector(
-          onPanUpdate: (details) {
-            _handleTouch(details.localPosition, lightingState, canvasSize);
+          onPanDown: (details) {
+            _handleTouchStart(details.localPosition, lightingState, canvasSize);
           },
-          onTapDown: (details) {
-            _handleTouch(details.localPosition, lightingState, canvasSize);
+          onPanUpdate: (details) {
+            _handleTouchUpdate(details.localPosition, lightingState, canvasSize);
+          },
+          onPanEnd: (details) {
           },
           child: CustomPaint(
             size: canvasSize,
@@ -162,7 +177,7 @@ class PBRShaderPainter extends CustomPainter {
     shader.setFloat(fi++, state.ambientColor.b);
     shader.setFloat(fi++, state.shadowSoftness);
 
-    int numLights = state.lights.length.clamp(0, 4);
+    int numLights = state.lights.length.clamp(0, 16);
     shader.setFloat(fi++, numLights.toDouble());
 
     // --- PHOTOREALISM TUNING UNIFORMS ---
@@ -175,19 +190,39 @@ class PBRShaderPainter extends CustomPainter {
     shader.setFloat(fi++, state.zMaxRatio);
     // ---------------------------
 
-    for (int i = 0; i < 4; i++) {
+    // Loop exactly 16 times to fill the 224-float uniform array
+    for (int i = 0; i < 16; i++) {
       if (i < numLights) {
         final light = state.lights[i];
+        
+        // Calculate Direction vector for shader from theta and phi
+        double thetaRad = light.theta * math.pi / 180.0;
+        double phiRad = light.phi * math.pi / 180.0;
+        
+        double dx = math.sin(phiRad) * math.cos(thetaRad);
+        double dy = math.sin(phiRad) * math.sin(thetaRad);
+        double dz = math.cos(phiRad);
+
+        double innerCos = math.cos(light.coneInnerAngle * math.pi / 180.0);
+        double outerCos = math.cos(light.coneOuterAngle * math.pi / 180.0);
+
+        shader.setFloat(fi++, light.type.index.toDouble());
         shader.setFloat(fi++, light.pos.x);
         shader.setFloat(fi++, light.pos.y);
         shader.setFloat(fi++, light.pos.z);
+        shader.setFloat(fi++, dx); // dir.x
+        shader.setFloat(fi++, dy); // dir.y
+        shader.setFloat(fi++, dz); // dir.z
         shader.setFloat(fi++, light.color.r);
         shader.setFloat(fi++, light.color.g);
         shader.setFloat(fi++, light.color.b);
         shader.setFloat(fi++, light.intensity);
-        shader.setFloat(fi++, light.attenuationDecay ?? 2.0);
+        shader.setFloat(fi++, light.attenuationDecay);
+        shader.setFloat(fi++, innerCos);
+        shader.setFloat(fi++, outerCos);
       } else {
-        for (int p = 0; p < 8; p++) {
+        // Pad empty lights with 14 zeroes
+        for (int p = 0; p < 14; p++) {
           shader.setFloat(fi++, 0.0);
         }
       }
@@ -211,6 +246,7 @@ class PBRShaderPainter extends CustomPainter {
 
     for (int i = 0; i < state.lights.length; i++) {
       final light = state.lights[i];
+
       final bool isSelected = (i == state.selectedLightIndex);
 
       // World (0,0) = center of the draw rect

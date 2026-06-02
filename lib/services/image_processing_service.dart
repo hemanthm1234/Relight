@@ -32,14 +32,14 @@ class ImageProcessingService {
     return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));
   }
 
-  Future<Map<String, Uint8List>> executeIntrinsicDecomposition(Uint8List targetImageBytes, Float32List depthMapData) async {
+  Future<Map<String, dynamic>> executeIntrinsicDecomposition(Uint8List targetImageBytes, Float32List depthMapData) async {
     return await compute(_processTexturesIsolate, {
       'imageBytes': targetImageBytes,
       'depthData': depthMapData,
     });
   }
 
-  static Map<String, Uint8List> _processTexturesIsolate(Map<String, dynamic> args) {
+  static Map<String, dynamic> _processTexturesIsolate(Map<String, dynamic> args) {
     final Uint8List imageBytes = args['imageBytes'];
     final Float32List rawDepthData = args['depthData'];
 
@@ -123,7 +123,7 @@ class ImageProcessingService {
     // BICUBIC UPSCALING: Uses 16-point Catmull-Rom interpolation for C¹-continuous
     // depth curves. This eliminates the grid-line artifacts in the normal map that
     // nearest-neighbor/bilinear sampling creates (flat tiles with discontinuous slopes).
-    img.Image depthTexImg = img.Image(width: w, height: h, numChannels: 3, format: img.Format.uint8);
+    img.Image depthTexImg = img.Image(width: w, height: h, numChannels: 4, format: img.Format.uint8);
     
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
@@ -158,12 +158,12 @@ class ImageProcessingService {
         double fractPart = scaledDepth - rByte;
         int gByte = (fractPart * 255.0).round().clamp(0, 255);
         
-        depthTexImg.setPixelRgb(x, y, rByte, gByte, 0);
+        depthTexImg.setPixelRgba(x, y, rByte, gByte, 0, 255);
       }
     }
 
     // 2. Perform Intrinsic Image Decomposition via Bilateral Edge Preservation Filter Approximation
-    img.Image albedoTexImg = img.Image(width: w, height: h, numChannels: 3, format: img.Format.uint8);
+    img.Image albedoTexImg = img.Image(width: w, height: h, numChannels: 4, format: img.Format.uint8);
     
     // Exact manual combination weights from linear luminance conversion logic
     double rWeight = 0.299;
@@ -225,20 +225,29 @@ class ImageProcessingService {
         int gAlbedo = ((origPixel.g / 255.0 / estimatedShading) * 255.0).round().clamp(0, 255);
         int bAlbedo = ((origPixel.b / 255.0 / estimatedShading) * 255.0).round().clamp(0, 255);
 
-        albedoTexImg.setPixelRgb(x, y, rAlbedo, gAlbedo, bAlbedo);
+        albedoTexImg.setPixelRgba(x, y, rAlbedo, gAlbedo, bAlbedo, 255);
       }
     }
 
+    if (original.numChannels != 4) {
+      original = original.convert(numChannels: 4);
+    }
+
     return {
-      'albedo': Uint8List.fromList(img.encodePng(albedoTexImg)),
-      'depth': Uint8List.fromList(img.encodePng(depthTexImg)),
-      'original': Uint8List.fromList(img.encodePng(original)),
+      'albedo': albedoTexImg.toUint8List(),
+      'depth': depthTexImg.toUint8List(),
+      'original': original.toUint8List(),
+      'width': w,
+      'height': h,
     };
   }
 
-  static Future<ui.Image> createUiImageFromBytes(Uint8List bytes) async {
+  static Future<ui.Image> createUiImageFromPixels(Uint8List pixels, int w, int h) async {
     final Completer<ui.Image> completer = Completer();
-    ui.decodeImageFromList(bytes, (img) => completer.complete(img));
+    ui.decodeImageFromPixels(
+      pixels, w, h, ui.PixelFormat.rgba8888, 
+      (ui.Image img) => completer.complete(img)
+    );
     return completer.future;
   }
 }

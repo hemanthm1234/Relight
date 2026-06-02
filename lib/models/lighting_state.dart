@@ -14,17 +14,31 @@
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 
+enum LightType { spherical, conical }
+
 class LightSource {
+  LightType type;
   Vector3 pos;
   Color color;
   double intensity;
-  double? attenuationDecay;
+  double attenuationDecay;
+  double coneInnerAngle; // In degrees
+  double coneOuterAngle; // In degrees
+  
+  // Direction angles for Conical light
+  double theta; // Angle in x-y plane from x-axis (0 to 360)
+  double phi;   // Azimuthal angle from z-axis (0 to 180)
 
   LightSource({
+    this.type = LightType.spherical,
     required this.pos,
     required this.color,
     required this.intensity,
     this.attenuationDecay = 2.0,
+    this.coneInnerAngle = 15.0,
+    this.coneOuterAngle = 25.0,
+    this.theta = 0.0,
+    this.phi = 180.0, // Default pointing straight back at the camera (z = -1)
   });
 }
 
@@ -68,12 +82,13 @@ class LightingState extends ChangeNotifier {
   }
 
   void addLight() {
-    if (lights.length < 4) {
-      // Spawn light at the exact center of the screen (0,0) and slightly in front of the image plane (-150.0)
+    if (lights.length < 16) { // Expanded max to 16 lights
+      // Spawn light at the exact center of the screen
       lights.add(LightSource(
+        type: LightType.spherical,
         pos: Vector3(0.0, 0.0, 0.5), // Normalized depth range (0.0 to 1.0)
         color: Colors.white,
-        intensity: 250000.0, // Perspective lights need higher intensity due to true inverse-square falloff
+        intensity: 250000.0,
       ));
       selectedLightIndex = lights.length - 1;
       if (!isLightingEnabled) isLightingEnabled = true;
@@ -106,11 +121,26 @@ class LightingState extends ChangeNotifier {
     }
   }
 
-  void updateSelectedLight({Color? color, double? intensity, double? attenuationDecay}) {
+  void updateSelectedLight({
+    LightType? type,
+    Color? color, 
+    double? intensity, 
+    double? attenuationDecay,
+    double? coneInnerAngle,
+    double? coneOuterAngle,
+    double? theta,
+    double? phi,
+  }) {
     if (selectedLightIndex >= 0) {
-      if (color != null) lights[selectedLightIndex].color = color;
-      if (intensity != null) lights[selectedLightIndex].intensity = intensity;
-      if (attenuationDecay != null) lights[selectedLightIndex].attenuationDecay = attenuationDecay;
+      final l = lights[selectedLightIndex];
+      if (type != null) l.type = type;
+      if (color != null) l.color = color;
+      if (intensity != null) l.intensity = intensity;
+      if (attenuationDecay != null) l.attenuationDecay = attenuationDecay;
+      if (coneInnerAngle != null) l.coneInnerAngle = coneInnerAngle;
+      if (coneOuterAngle != null) l.coneOuterAngle = coneOuterAngle;
+      if (theta != null) l.theta = theta;
+      if (phi != null) l.phi = phi;
       notifyListeners();
     }
   }

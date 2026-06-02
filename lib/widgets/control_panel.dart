@@ -11,6 +11,7 @@
 // - Uses highly compressed custom slider layouts and shrink-wrap tap geometries to ensure zero horizontal/vertical layout overflows.
 // ============================================================================
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -209,7 +210,7 @@ class _ControlPanelState extends State<ControlPanel> {
                       showCheckmark: false,
                     ),
                   ),
-                if (state.lights.length < 4)
+                if (state.lights.length < 16)
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.blueAccent, size: 26),
                     onPressed: state.addLight,
@@ -226,24 +227,79 @@ class _ControlPanelState extends State<ControlPanel> {
           ),
           if (activeLight != null) ...[
             const SizedBox(height: 12),
+            
+            // Light Type Toggle
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: SegmentedButton<LightType>(
+                  segments: const [
+                    ButtonSegment(value: LightType.spherical, label: Text('Spherical'), icon: Icon(Icons.wb_sunny)),
+                    ButtonSegment(value: LightType.conical, label: Text('Spotlight'), icon: Icon(Icons.highlight)),
+                  ],
+                  selected: {activeLight.type},
+                  onSelectionChanged: (Set<LightType> newSelection) {
+                    state.updateSelectedLight(type: newSelection.first);
+                  },
+                  style: SegmentedButton.styleFrom(
+                    backgroundColor: Colors.white.withAlpha(10),
+                    selectedForegroundColor: Colors.white,
+                    selectedBackgroundColor: Colors.blueAccent.withAlpha(80),
+                    textStyle: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
             _buildSlider(
               label: "Intensity",
               value: activeLight.intensity,
               min: 1000.0, max: 500000.0,
               onChanged: (v) => state.updateSelectedLight(intensity: v),
             ),
+
             _buildSlider(
               label: "Light Depth (Z)",
               value: activeLight.pos.z,
               min: -1.0, max: 1.0,
               onChanged: (v) => state.updateSelectedLightPos(activeLight.pos.x, activeLight.pos.y, z: v),
             ),
+
             _buildSlider(
               label: "Light Falloff (Decay)",
-              value: activeLight.attenuationDecay ?? 2.0,
+              value: activeLight.attenuationDecay,
               min: 0.1, max: 3.0,
               onChanged: (v) => state.updateSelectedLight(attenuationDecay: v),
             ),
+
+            if (activeLight.type == LightType.conical) ...[
+              _buildSlider(
+                label: "Spotlight Theta (X-Y Angle)",
+                value: activeLight.theta,
+                min: 0.0, max: 360.0,
+                onChanged: (v) => state.updateSelectedLight(theta: v),
+              ),
+              _buildSlider(
+                label: "Spotlight Phi (Z Angle)",
+                value: activeLight.phi,
+                min: 0.0, max: 180.0,
+                onChanged: (v) => state.updateSelectedLight(phi: v),
+              ),
+              _buildSlider(
+                label: "Inner Cone Angle",
+                value: activeLight.coneInnerAngle,
+                min: 1.0, max: activeLight.coneOuterAngle - 1.0,
+                onChanged: (v) => state.updateSelectedLight(coneInnerAngle: v),
+              ),
+              _buildSlider(
+                label: "Outer Cone Angle",
+                value: activeLight.coneOuterAngle,
+                min: activeLight.coneInnerAngle + 1.0, max: 90.0,
+                onChanged: (v) => state.updateSelectedLight(coneOuterAngle: v),
+              ),
+            ],
+
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -297,7 +353,7 @@ class _ControlPanelState extends State<ControlPanel> {
               ],
             ),
             const SizedBox(height: 4),
-          ]
+          ],
         ],
       ),
     );
@@ -428,6 +484,72 @@ class _ControlPanelState extends State<ControlPanel> {
     required double max,
     required ValueChanged<double> onChanged,
   }) {
+    return DebouncedSlider(
+      label: label,
+      value: value,
+      min: min,
+      max: max,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class DebouncedSlider extends StatefulWidget {
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  const DebouncedSlider({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  State<DebouncedSlider> createState() => _DebouncedSliderState();
+}
+
+class _DebouncedSliderState extends State<DebouncedSlider> {
+  late double _localValue;
+  Timer? _debounceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _localValue = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(DebouncedSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_debounceTimer == null || !_debounceTimer!.isActive) {
+      _localValue = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(double newValue) {
+    setState(() {
+      _localValue = newValue;
+    });
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 32), () {
+      widget.onChanged(newValue);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Column(
@@ -440,7 +562,7 @@ class _ControlPanelState extends State<ControlPanel> {
               children: [
                 Expanded(
                   child: Text(
-                    label,
+                    widget.label,
                     style: TextStyle(
                       color: Colors.white.withAlpha(200),
                       fontSize: 10,
@@ -452,7 +574,7 @@ class _ControlPanelState extends State<ControlPanel> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  value.toStringAsFixed(2),
+                  _localValue.toStringAsFixed(2),
                   style: const TextStyle(
                     color: Colors.blueAccent,
                     fontSize: 10,
@@ -475,10 +597,10 @@ class _ControlPanelState extends State<ControlPanel> {
             child: SizedBox(
               height: 24,
               child: Slider(
-                value: value,
-                min: min,
-                max: max,
-                onChanged: onChanged,
+                value: _localValue,
+                min: widget.min,
+                max: widget.max,
+                onChanged: _onChanged,
               ),
             ),
           ),
