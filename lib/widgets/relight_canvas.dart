@@ -239,14 +239,11 @@ class PBRShaderPainter extends CustomPainter {
   void _drawLightIndicators(Canvas canvas) {
     const double minDotRadius = 4.0;
     const double maxDotRadius = 14.0;
-    const double minCircleRadius = 18.0;
-    const double maxCircleRadius = 80.0;
     const double maxIntensity = 500000.0;
     const double minIntensity = 1000.0;
 
     for (int i = 0; i < state.lights.length; i++) {
       final light = state.lights[i];
-
       final bool isSelected = (i == state.selectedLightIndex);
 
       // World (0,0) = center of the draw rect
@@ -254,38 +251,115 @@ class PBRShaderPainter extends CustomPainter {
       final double screenY = light.pos.y + drawRect.top + drawRect.height / 2.0;
       final Offset center = Offset(screenX, screenY);
 
-      // Normalized Z: 0.0 is front (bigger dot), 1.0 is back (smaller dot)
+      // Normalized Z: 0.0 is front (bigger), 1.0 is back (smaller)
       final double heightNorm = (1.0 - light.pos.z).clamp(0.0, 1.0);
-      final double dotRadius = minDotRadius + (maxDotRadius - minDotRadius) * heightNorm;
+      final double depthScale = 0.6 + 0.8 * heightNorm; // 0.6x to 1.4x
 
       final double intensityNorm = ((light.intensity - minIntensity) / (maxIntensity - minIntensity)).clamp(0.0, 1.0);
-      final double circleRadius = minCircleRadius + (maxCircleRadius - minCircleRadius) * intensityNorm;
+      final double pwrScale = 0.8 + 0.8 * intensityNorm; // 0.8x to 1.6x
+      
+      final double finalScale = (depthScale * pwrScale).clamp(0.4, 2.5); // Hard bounds just in case
+      
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
 
-      final Color lightColor = light.color;
+      if (light.type == LightType.conical) {
+        // Anti-clockwise rotation for Theta
+        double thetaRad = light.theta * math.pi / 180.0;
+        canvas.rotate(-thetaRad);
 
-      final Paint circlePaint = Paint()
-        ..color = lightColor.withAlpha(isSelected ? 180 : 100)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isSelected ? 3.0 : 2.0;
-      canvas.drawCircle(center, circleRadius, circlePaint);
+        // Phi determines foreshortening
+        double phiRad = light.phi * math.pi / 180.0;
+        double foreshortening = math.sin(phiRad).abs();
+        
+        canvas.scale(finalScale);
 
-      if (isSelected) {
-        final Paint glowPaint = Paint()
-          ..color = lightColor.withAlpha(30)
+        if (isSelected) {
+          final Path beamPath = Path();
+          double beamLength = 80.0 * foreshortening; 
+          double innerRadius = 8.0;
+          double outerRadius = 8.0 + beamLength * math.tan(light.coneOuterAngle * math.pi / 180.0);
+          
+          if (beamLength > 5.0) {
+            beamPath.moveTo(0, -innerRadius);
+            beamPath.lineTo(beamLength, -outerRadius);
+            beamPath.lineTo(beamLength, outerRadius);
+            beamPath.lineTo(0, innerRadius);
+            beamPath.close();
+
+            final Paint beamPaint = Paint()
+              ..shader = ui.Gradient.linear(
+                const Offset(0, 0),
+                Offset(beamLength, 0),
+                [light.color.withAlpha(150), light.color.withAlpha(0)],
+              );
+            canvas.drawPath(beamPath, beamPaint);
+          }
+        }
+
+        double headWidth = math.max(6.0 * foreshortening, 2.0);
+        double bodyLength = math.max(30.0 * foreshortening, 6.0);
+
+        final Rect handleRect = Rect.fromCenter(
+          center: Offset(-bodyLength / 2.0 - headWidth, 0), 
+          width: bodyLength, 
+          height: 10.0
+        );
+        
+        final Rect headRect = Rect.fromCenter(
+          center: Offset(-headWidth / 2.0, 0), 
+          width: headWidth, 
+          height: 18.0
+        );
+
+        final Paint basePaint = Paint()
+          ..color = isSelected ? Colors.grey[300]! : Colors.grey[700]!
           ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, circleRadius, glowPaint);
+          
+        canvas.drawRRect(RRect.fromRectAndRadius(handleRect, const Radius.circular(3.0)), basePaint);
+        canvas.drawRRect(RRect.fromRectAndRadius(headRect, const Radius.circular(2.0)), basePaint);
+
+        final Rect lensRect = Rect.fromCenter(
+          center: Offset(0, 0), 
+          width: 3.0, 
+          height: 14.0
+        );
+        final Paint lensPaint = Paint()
+          ..color = light.color
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(RRect.fromRectAndRadius(lensRect, const Radius.circular(1.0)), lensPaint);
+
+        if (isSelected) {
+            final Paint outlinePaint = Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5;
+            canvas.drawRRect(RRect.fromRectAndRadius(handleRect, const Radius.circular(3.0)), outlinePaint);
+            canvas.drawRRect(RRect.fromRectAndRadius(headRect, const Radius.circular(2.0)), outlinePaint);
+        }
+
+      } else {
+        canvas.scale(finalScale);
+
+        final Paint glowPaint = Paint()
+          ..color = light.color.withAlpha(isSelected ? 160 : 60)
+          ..style = PaintingStyle.fill
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12.0);
+        canvas.drawCircle(Offset.zero, 18.0, glowPaint);
+
+        final Paint bulbPaint = Paint()
+          ..color = isSelected ? Colors.white : Colors.white70
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset.zero, 8.0, bulbPaint);
+
+        final Paint outlinePaint = Paint()
+          ..color = light.color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isSelected ? 3.0 : 1.5;
+        canvas.drawCircle(Offset.zero, 8.0, outlinePaint);
       }
 
-      final Paint dotPaint = Paint()
-        ..color = lightColor
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(center, dotRadius, dotPaint);
-
-      final Paint dotBorderPaint = Paint()
-        ..color = isSelected ? Colors.white : Colors.white54
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isSelected ? 2.0 : 1.0;
-      canvas.drawCircle(center, dotRadius, dotBorderPaint);
+      canvas.restore();
     }
   }
 
