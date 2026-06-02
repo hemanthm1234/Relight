@@ -35,5 +35,6 @@ flutter:
     - assets/models/depth_anything_v3.tflite
     - assets/images/
     - assets/cache/
+    - assets/example_relights/
   shaders:
     - assets/shaders/pbr_relight.frag

@@ -25,6 +25,7 @@ import 'services/image_processing_service.dart';
 import 'widgets/control_panel.dart';
 import 'widgets/relight_canvas.dart';
 import 'widgets/map_selector.dart';
+import 'widgets/examples_gallery.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEVELOPER TOGGLE
@@ -697,6 +698,34 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
           ),
         ),
         actions: [
+          if (_albedoTex == null && !_isLoading)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ExamplesGalleryScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent.withAlpha(40),
+                  foregroundColor: Colors.blueAccent,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(color: Colors.blueAccent.withAlpha(128), width: 1),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: const Text(
+                  "Examples",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.3),
+                ),
+              ),
+            ),
           if (_albedoTex != null) ...[
             IconButton(
               icon: Icon(
@@ -764,12 +793,12 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 16.0),
+              padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 16.0),
               child: Column(
                 children: [
-                  Center(
+                  const Center(
                     child: Icon(
                       Icons.blur_on,
                       size: 64,
