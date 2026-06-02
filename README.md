@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="Relight Logo" width="150" style="border-radius:50%;"/>
+  <img src="logo.png" alt="Relight Logo" width="100" style="border-radius:50%;"/>
 
   # 🌟 Relight
   
