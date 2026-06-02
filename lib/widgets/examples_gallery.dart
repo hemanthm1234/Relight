@@ -49,14 +49,29 @@ class _ExamplesGalleryScreenState extends State<ExamplesGalleryScreen> {
     return GestureDetector(
       onTap: () {
         Navigator.push(
-          context, 
+          context,
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) => 
                 FullScreenGallery(images: _images, initialIndex: index),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
+              // Softer Scale Up + Fade
+              final scaleAnimation = Tween<double>(
+                begin: 0.98,
+                end: 1.0,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutQuad,
+              ));
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: scaleAnimation,
+                  child: child,
+                ),
+              );
             },
-          )
+            transitionDuration: const Duration(milliseconds: 300),
+          ),
         );
       },
       child: Container(
@@ -76,12 +91,9 @@ class _ExamplesGalleryScreenState extends State<ExamplesGalleryScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Hero(
-              tag: 'gallery_image_$assetPath',
-              child: Image.asset(
-                assetPath,
-                fit: BoxFit.cover,
-              ),
+            Image.asset(
+              assetPath,
+              fit: BoxFit.cover,
             ),
             Positioned.fill(
               child: Container(
@@ -192,12 +204,9 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             return InteractiveViewer(
               minScale: 0.8,
               maxScale: 5.0,
-              child: Hero(
-                tag: 'gallery_image_$assetPath',
-                child: Image.asset(
-                  assetPath,
-                  fit: BoxFit.contain,
-                ),
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
               ),
             );
           },

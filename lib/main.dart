@@ -609,6 +609,15 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
     setState(() {
       _isLoading = true;
       _statusMessage = "Loading Depth Model Engine...";
+      
+      // Free GPU memory before starting heavy pipeline to prevent OOM
+      // and ensure the UI transitions to the loading screen.
+      _albedoTex?.dispose();
+      _originalTex?.dispose();
+      _depthTex?.dispose();
+      _albedoTex = null;
+      _originalTex = null;
+      _depthTex = null;
     });
 
     try {
@@ -648,10 +657,6 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
       ]);
 
       setState(() {
-        _albedoTex?.dispose();
-        _originalTex?.dispose();
-        _depthTex?.dispose();
-
         _albedoTex   = gpuHandles[0];
         _originalTex = gpuHandles[1];
         _depthTex    = gpuHandles[2];
@@ -679,8 +684,23 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   Widget build(BuildContext context) {
     final state = context.watch<LightingState>();
     
-    return Scaffold(
-      appBar: AppBar(
+    return PopScope(
+      canPop: _albedoTex == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_albedoTex != null) {
+          setState(() {
+            _albedoTex?.dispose();
+            _originalTex?.dispose();
+            _depthTex?.dispose();
+            _albedoTex = null;
+            _originalTex = null;
+            _depthTex = null;
+          });
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: GestureDetector(
           onTap: () {
             setState(() {
@@ -705,7 +725,27 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const ExamplesGalleryScreen()),
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const ExamplesGalleryScreen(),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        // Softer Scale Up + Fade
+                        final scaleAnimation = Tween<double>(
+                          begin: 0.98,
+                          end: 1.0,
+                        ).animate(CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutQuad,
+                        ));
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: scaleAnimation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      transitionDuration: const Duration(milliseconds: 300),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -749,41 +789,67 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
             )
         ],
       ),
-      body: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
-        ? Column(
-            children: [
-              const GlobalMapSelector(),
-              Expanded(
-                child: RelightCanvas(
-                  key: _canvasKey,
-                  albedoTexture: _albedoTex!,
-                  originalTexture: _originalTex!,
-                  depthTexture: _depthTex!,
-                  compiledShader: _shader!,
-                ),
-              ),
-              const ControlPanel(),
-            ],
-          )
-        : _isLoading
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(
-                        _statusMessage,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // Softer Scale Up + Fade
+          final scaleAnimation = Tween<double>(
+            begin: 0.98,
+            end: 1.0,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutQuad,
+          ));
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: scaleAnimation,
+              child: child,
+            ),
+          );
+        },
+        child: _albedoTex != null && _originalTex != null && _depthTex != null && _shader != null
+          ? Column(
+              key: const ValueKey('workspace'),
+              children: [
+                const GlobalMapSelector(),
+                Expanded(
+                  child: RelightCanvas(
+                    key: _canvasKey,
+                    albedoTexture: _albedoTex!,
+                    originalTexture: _originalTex!,
+                    depthTexture: _depthTex!,
+                    compiledShader: _shader!,
                   ),
                 ),
-              )
-            : _buildLandingPage(),
+                const ControlPanel(),
+              ],
+            )
+          : _isLoading
+              ? Center(
+                  key: const ValueKey('loading'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          _statusMessage,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : KeyedSubtree(
+                  key: const ValueKey('landing'),
+                  child: _buildLandingPage(),
+                ),
+      ),
+      ),
     );
   }
 
