@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../models/lighting_state.dart';
 
 class ControlPanel extends StatefulWidget {
@@ -314,41 +315,95 @@ class _ControlPanelState extends State<ControlPanel> {
                 ),
                 Wrap(
                   spacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Colors.white,
-                    Colors.orangeAccent,
-                    Colors.cyanAccent,
-                    Colors.greenAccent,
-                    Colors.purpleAccent,
-                    Colors.redAccent,
-                  ].map((color) {
-                    final bool isSelected = activeLight.color == color;
-                    return GestureDetector(
-                      onTap: () => state.updateSelectedLight(color: color),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
+                    ...[
+                      Colors.white,
+                      const Color(0xFFF25022), // Microsoft Red
+                      const Color(0xFF7FBA00), // Microsoft Green
+                      const Color(0xFF00A4EF), // Microsoft Blue
+                      const Color(0xFFFFB900), // Microsoft Yellow
+                    ].map((color) {
+                      final bool isSelected = activeLight.color == color;
+                      return GestureDetector(
+                        onTap: () => state.updateSelectedLight(color: color),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: color.withAlpha(120),
+                                      blurRadius: 8.0,
+                                      spreadRadius: 2.0,
+                                    ),
+                                  ]
+                                : null,
+                            border: Border.all(
+                              color: isSelected ? Colors.white : Colors.white.withAlpha(40),
+                              width: isSelected ? 2.5 : 1.0,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            Color pickerColor = activeLight.color;
+                            return AlertDialog(
+                              title: const Text('Pick a color!'),
+                              backgroundColor: const Color(0xFF161622),
+                              content: SingleChildScrollView(
+                                child: ColorPicker(
+                                  pickerColor: pickerColor,
+                                  onColorChanged: (Color color) {
+                                    pickerColor = color;
+                                    state.updateSelectedLight(color: color);
+                                  },
+                                  pickerAreaHeightPercent: 0.8,
+                                ),
+                              ),
+                              actions: <Widget>[
+                                TextButton(
+                                  child: const Text('Done', style: TextStyle(color: Colors.blueAccent)),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      child: Container(
                         width: 26,
                         height: 26,
                         decoration: BoxDecoration(
-                          color: color,
                           shape: BoxShape.circle,
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: color.withAlpha(120),
-                                    blurRadius: 8.0,
-                                    spreadRadius: 2.0,
-                                  ),
-                                ]
-                              : null,
-                          border: Border.all(
-                            color: isSelected ? Colors.white : Colors.white.withAlpha(40),
-                            width: isSelected ? 2.5 : 1.0,
+                          border: Border.all(color: Colors.white.withAlpha(40), width: 1.0),
+                          gradient: const SweepGradient(
+                            colors: [
+                              Colors.red,
+                              Colors.yellow,
+                              Colors.green,
+                              Colors.cyan,
+                              Colors.blue,
+                              Color(0xFFFF00FF), // Magenta
+                              Colors.red,
+                            ],
                           ),
                         ),
+                        child: const Icon(Icons.palette, size: 14, color: Colors.white),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 )
               ],
             ),
