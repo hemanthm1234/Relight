@@ -236,7 +236,7 @@ class _ControlPanelState extends State<ControlPanel> {
                 child: SegmentedButton<LightType>(
                   segments: const [
                     ButtonSegment(value: LightType.spherical, label: Text('Spherical'), icon: Icon(Icons.wb_sunny)),
-                    ButtonSegment(value: LightType.conical, label: Text('Spotlight'), icon: Icon(Icons.highlight)),
+                    ButtonSegment(value: LightType.conical, label: Text('Conical'), icon: Icon(Icons.highlight)),
                   ],
                   selected: {activeLight.type},
                   onSelectionChanged: (Set<LightType> newSelection) {
@@ -276,13 +276,13 @@ class _ControlPanelState extends State<ControlPanel> {
 
             if (activeLight.type == LightType.conical) ...[
               _buildSlider(
-                label: "Spotlight Theta (X-Y Angle)",
+                label: "Theta (X-Y Angle)",
                 value: activeLight.theta,
                 min: 0.0, max: 360.0,
                 onChanged: (v) => state.updateSelectedLight(theta: v),
               ),
               _buildSlider(
-                label: "Spotlight Phi (Z Angle)",
+                label: "Phi (Z Angle)",
                 value: activeLight.phi,
                 min: 0.0, max: 180.0,
                 onChanged: (v) => state.updateSelectedLight(phi: v),

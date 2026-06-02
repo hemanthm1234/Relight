@@ -200,7 +200,7 @@ class PBRShaderPainter extends CustomPainter {
         double phiRad = light.phi * math.pi / 180.0;
         
         double dx = math.sin(phiRad) * math.cos(thetaRad);
-        double dy = math.sin(phiRad) * math.sin(thetaRad);
+        double dy = -math.sin(phiRad) * math.sin(thetaRad); // Negated for anti-clockwise rotation
         double dz = math.cos(phiRad);
 
         double innerCos = math.cos(light.coneInnerAngle * math.pi / 180.0);

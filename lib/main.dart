@@ -449,6 +449,29 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
   Future<void> _downloadRelitImage() async {
     if (_originalTex == null || _albedoTex == null || _depthTex == null || _shader == null) return;
 
+    final bool? includeIndicators = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Export Options'),
+          backgroundColor: const Color(0xFF161622),
+          content: const Text('Do you want to include the visual light source indicators in the saved image?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No (Clean Image)', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes', style: TextStyle(color: Colors.blueAccent)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (includeIndicators == null) return;
+
     setState(() {
       _isLoading = true;
       _statusMessage = "Baking high-res relit image...";
@@ -496,7 +519,7 @@ class _RelighterWorkspaceState extends State<RelighterWorkspace> {
         depth: _depthTex!,
         state: state,
         drawRect: screenDrawRect,
-        showIndicators: false,
+        showIndicators: includeIndicators,
       );
 
       painter.paint(canvas, canvasSize);
